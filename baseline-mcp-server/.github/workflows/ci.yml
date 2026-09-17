@@ -1,0 +1,26 @@
+# Starter CI for the MCP read server — lint + tests on every push/PR.
+# Extend this as you go (type-checking, coverage, an integration smoke test).
+#
+# NOTE: this lives inside the baseline-mcp-server project. It runs once this
+# project is in its own repository (GitHub only picks up workflows under the
+# repo-root .github/workflows/).
+name: mcp-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt ruff
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: pytest -q

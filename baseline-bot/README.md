@@ -1,0 +1,59 @@
+# Baseline Trading Bot
+
+The starting Python bot for the GIC hackathon simulated exchange. It is
+**functional but deliberately incomplete** — you inherit it and enhance it. See
+[`HANDOVER.md`](HANDOVER.md) for the outgoing developer's notes and
+[`AGENTS.md`](AGENTS.md) for AI-assistant context.
+
+## What it does
+
+- Connects to the exchange over REST (orders) and the **SSE feed** (market data).
+- Runs **momentum on NOVA** and **mean-reversion on ELXR** (Combo 1). AXON / CRVX /
+  DRFT are not traded by the baseline — adding them is your work.
+- Accumulates its own price history from SSE `price` events (there is no candles
+  endpoint) and logs to stdout.
+
+## What it deliberately lacks
+
+Stop-losses, SSE reconnection, graceful shutdown, an `announcement` handler,
+structured logging, and any bot-state emission. There are also a handful of
+inherited bugs — the handover notes point at them.
+
+## Run
+
+```bash
+pip install -r requirements.txt
+# Edit config.yaml: set exchange.base_url (sandbox or live) and your team api_key.
+python main.py
+```
+
+Treat **sandbox as dev** and **live as prod** — switch via `config.yaml`; don't
+develop against the live session.
+
+## Test
+
+```bash
+pip install -r requirements.txt pytest
+pytest -q
+```
+
+## Layout
+
+```
+baseline-bot/
+├── config.yaml                 # exchange + per-instrument strategy + risk
+├── main.py                     # wiring and the run loop
+├── exchange/{client.py, feed.py}
+├── strategies/{base.py, momentum.py, mean_reversion.py}  # market_making.py.DISABLED (bonus)
+├── risk/limits.py
+├── utils/logger.py
+├── tests/                      # starter strategy tests
+└── .github/workflows/ci.yml    # starter CI (lint + tests)
+```
+
+## Notes
+
+- Auth is `X-API-Key` on every call.
+- Prices/money are **integer cents** on the wire ($42.50 → `4250`).
+- Orders are `limit` only; `side` lowercase; one `idempotency_key` per order.
+- The exchange is **long-only** — a sell only reduces/closes a held long.

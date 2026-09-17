@@ -1,0 +1,5 @@
+# Standard pyflakes + pycodestyle rules for the starter CI.
+line-length = 100
+
+[lint]
+select = ["E", "F", "W"]

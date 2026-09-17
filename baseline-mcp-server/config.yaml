@@ -1,0 +1,9 @@
+# Baseline MCP read server configuration.
+
+server:
+  port: 8090                              # distinct from the exchange's 8080
+  mcp_base_url: "http://localhost:8090"   # what the dashboard adapter targets
+
+exchange:
+  base_url: "http://exchange.gic-hackathon.internal"   # sandbox/live URL from the platform team
+  api_key: "REPLACE_WITH_TEAM_API_KEY"
