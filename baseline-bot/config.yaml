@@ -26,7 +26,7 @@
 
 exchange:
   base_url: "https://api.codetoimpact.sg"   # sandbox/live URL from the platform team
-  api_key: "c2i_iI2w1FrCqVhrxl-cqMaauw4O6bCwqKZ2"     # never commit the real key; set EXCHANGE_API_KEY
+  api_key: "REPLACE_WITH_TEAM_API_KEY"
 
 instruments:
   active:
