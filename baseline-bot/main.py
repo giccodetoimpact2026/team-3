@@ -341,10 +341,13 @@ QUIESCING = "QUIESCING"
 STOPPED = "STOPPED"
 
 
-def halt(client, lifecycle, shutdown_event):
+def halt(client, lifecycle, shutdown_event, order_manager=None):
     """Block new order intents and cancel all open orders.
 
     Reusable by signal handlers and a future kill-switch command.
+    When *order_manager* is provided, delegates to its cancel_all() which
+    atomically blocks intents, enumerates from both local state and the
+    exchange, and handles 504-reconciliation keys.
     """
     if lifecycle["value"] == STOPPED:
         return
@@ -353,25 +356,33 @@ def halt(client, lifecycle, shutdown_event):
     log("lifecycle: QUIESCING — blocking new intents")
 
     unknown = 0
-    try:
-        orders = client.get_orders()
-        open_orders = [
-            o for o in orders
-            if o.get("status") in ("OPEN", "PARTIALLY_FILLED")
-        ]
-        if not open_orders:
+    if order_manager is not None:
+        cancelled, unresolved = order_manager.cancel_all()
+        unknown = len(unresolved)
+        if cancelled:
+            log(f"halt: cancelled {len(cancelled)} order(s)")
+        if not cancelled and not unresolved:
             log("no open orders to cancel")
-        for order in open_orders:
-            oid = order["id"]
-            try:
-                client.cancel_order(oid)
-                log(f"cancelled order {oid}")
-            except Exception as exc:
-                log(f"cancel {oid} failed (may already be filled/cancelled): {exc}")
-                unknown += 1
-    except Exception as exc:
-        log(f"failed to fetch orders for cancellation: {exc}")
-        unknown += 1
+    else:
+        try:
+            orders = client.get_orders()
+            open_orders = [
+                o for o in orders
+                if o.get("status") in ("OPEN", "PARTIALLY_FILLED")
+            ]
+            if not open_orders:
+                log("no open orders to cancel")
+            for order in open_orders:
+                oid = order["id"]
+                try:
+                    client.cancel_order(oid)
+                    log(f"cancelled order {oid}")
+                except Exception as exc:
+                    log(f"cancel {oid} failed (may already be filled/cancelled): {exc}")
+                    unknown += 1
+        except Exception as exc:
+            log(f"failed to fetch orders for cancellation: {exc}")
+            unknown += 1
 
     lifecycle["value"] = STOPPED
     shutdown_event.set()
@@ -490,6 +501,11 @@ def main():
 
     limits = config.get("rate_limits", {})
     window = float(limits.get("window_seconds", 30))
+    anomaly_cfg = limits.get("anomaly_throttle", {})
+    anomaly_limiter = RollingWindow(
+        int(anomaly_cfg.get("max_orders", 20)),
+        float(anomaly_cfg.get("window_seconds", 10)),
+    )
     orders = OrderManager(
         client, risk,
         max_active_per_symbol=config["risk"].get("max_active_orders_per_symbol", 1),
@@ -497,6 +513,7 @@ def main():
         shared_limiter=RollingWindow(limits.get("shared_per_window", 300), window,
                                      reserve=limits.get("shared_reserve", 40)),
         submit_cooldown=float(config["risk"].get("order_cooldown_seconds", 3.0)),
+        anomaly_limiter=anomaly_limiter,
     )
 
     ob_cfg = config.get("orderbook", {})
@@ -587,6 +604,17 @@ def main():
     except Exception as exc:
         log(f"session bootstrap failed (will rely on SSE): {exc}")
 
+    # --- startup: cancel leftover orders from a previous run ----------------
+    cancelled, unresolved = orders.cancel_all()
+    if cancelled:
+        log(f"startup: cancelled {len(cancelled)} leftover order(s)")
+    if unresolved:
+        log(f"startup: {len(unresolved)} order(s) unresolved — positions may be locked")
+    orders.allow_new_intents()
+
+    if state["session_id"]:
+        orders.reset_for_session(state["session_id"])
+
     # --- event handlers -----------------------------------------------------
 
     def on_book_update(payload):
@@ -617,6 +645,7 @@ def main():
                 classifier.reset()
             if news_engine:
                 news_engine.reset()
+            orders.reset_for_session(new_id)
             state["session_id"] = new_id
 
     on_price = make_price_handler(strategies, orders, state, lifecycle, exits,
@@ -639,7 +668,7 @@ def main():
     def _shutdown_handler(signum, frame):
         sig_name = signal.Signals(signum).name
         log(f"received {sig_name} — initiating shutdown")
-        halt(client, lifecycle, shutdown_event)
+        halt(client, lifecycle, shutdown_event, order_manager=orders)
 
     signal.signal(signal.SIGINT, _shutdown_handler)
     signal.signal(signal.SIGTERM, _shutdown_handler)
@@ -657,7 +686,7 @@ def main():
 
     control = ControlServer(
         control_status,
-        lambda: halt(client, lifecycle, shutdown_event),
+        lambda: halt(client, lifecycle, shutdown_event, order_manager=orders),
         host=control_cfg.get("host", "127.0.0.1"),
         port=int(os.environ.get("BOT_CONTROL_PORT") or control_cfg.get("port", 8092)),
         news_engine=news_engine,
@@ -678,15 +707,6 @@ def main():
     feed.start()
     log("bot started")
 
-    # Keep the process alive. NOTE(P3): there is still no graceful shutdown or
-    # session bootstrap here — `session_open` starts False and only moves on an
-    # SSE event, so a bot started mid-window never trades. OrderManager now
-    # provides what the lifecycle work needs:
-    #   orders.block_new_intents()      -- atomic, call before cancelling
-    #   orders.cancel_all()             -- (cancelled, unresolved); exit nonzero
-    #                                      if `unresolved` is non-empty
-    #   orders.reset_for_session(id)    -- drop per-window state at a boundary
-    #   orders.last_seen_session_id     -- read from GET /portfolio, no extra call
     # Wait for the shutdown signal (Ctrl-C, SIGTERM or the dashboard kill
     # switch). A bare `while True: sleep` here would never let halt() end the
     # process. Polling keeps the main thread responsive to signals on every OS.
