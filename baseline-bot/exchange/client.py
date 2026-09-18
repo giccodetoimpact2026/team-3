@@ -43,7 +43,7 @@ class ExchangeClient:
         """Held quantity for a symbol (shares)."""
         portfolio = self.get_portfolio()
         by_symbol = {p["symbol"]: p["quantity"] for p in portfolio.get("positions", [])}
-        return by_symbol[symbol]
+        return by_symbol.get(symbol, 0)
 
     def get_order(self, order_id: str):
         """Look up one order by the exchange's order id.

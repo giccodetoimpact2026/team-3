@@ -26,7 +26,7 @@ strategy:
     type: mean_reversion
     # lookback feels short — mean-reversion is throwing false signals. Check
     # James Wee's strategy notes before trusting this number.
-    lookback_samples: 5
+    lookback_samples: 15
     deviation_threshold: 0.004
     trade_quantity: 50
     limit_offset_bps: 5
