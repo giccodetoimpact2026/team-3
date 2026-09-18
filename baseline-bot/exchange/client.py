@@ -61,6 +61,7 @@ class ExchangeClient:
         self.base_url = base_url.rstrip("/")
         self.session = requests.Session()
         self.session.headers.update({"X-API-Key": api_key})
+        self.session.verify = False
 
     # --- reads ------------------------------------------------------------
     def get_instruments(self):
