@@ -299,7 +299,19 @@ nav.tabs a.external { margin-left: auto; color: var(--accent); }
 /* --- Assistant shell ---------------------------------------------------- */
 .assistant-input { display: flex; gap: 8px; margin-bottom: 10px; }
 .assistant-input input { flex: 1; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font: inherit; }
-.assistant-answer { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; color: var(--muted); font-size: 14px; }
+.assistant-answer { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; color: var(--text); font-size: 14px; }
+.assistant-answer .answer-text { white-space: pre-wrap; line-height: 1.5; }
+.assistant-answer .answer-cites { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.assistant-answer .cite { background: rgba(16, 52, 166, 0.06); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.assistant-error { color: #b91c1c; }
+.confidence { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; padding: 1px 7px; border-radius: 10px; text-transform: lowercase; }
+.confidence.high { background: #dcfce7; color: #166534; }
+.confidence.medium { background: #fef3c7; color: #92400e; }
+.confidence.low { background: #fee2e2; color: #991b1b; }
+.agent-audit { margin-top: 18px; }
+.agent-audit .audit-meta { font-size: 12px; color: var(--muted); }
+.agent-audit .hint { font-size: 12px; color: var(--muted); margin: 4px 0 10px; }
+.agent-audit td.small { font-size: 11px; }
 
 /* --- Overview: bot bid/ask order trail ---------------------------------- */
 .order-side { display: inline-block; font-size: 11px; letter-spacing: 0.04em; padding: 2px 6px; border-radius: 4px; font-weight: 700; }

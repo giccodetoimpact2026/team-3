@@ -366,20 +366,32 @@
 
       <!-- ================= ASSISTANT ================= -->
       <section id="tab-assistant" class="tab-panel">
-        <div class="scaffold-note">
-          The conversational assistant is a Phase-3 differentiator and is not built yet.
-          It must run over the provided MCP read tools and show <strong>citations +
-          confidence</strong> (<code>source</code> + <code>as_of</code>) on every answer —
-          no black box. Copy the working call in
-          <code>mcp-adapter.example.js</code> to wire it.
+        <div class="scaffold-note info">
+          Read-only analyst assistant (M4). It runs the organizer LLM service over the
+          MCP read tools and shows <strong>citations + confidence</strong>
+          (<code>source</code> + <code>as_of</code>) on every answer — no black box.
+          Every query, tool call, answer and token spend is recorded in the
+          <strong>agent audit trail</strong> below.
         </div>
         <section class="assistant-shell">
           <div class="section-head"><h2>Ask the desk</h2></div>
           <div class="assistant-input">
-            <input id="assistant-q" type="text" placeholder="e.g. Are we over-exposed to NOVA and AXON?" disabled />
-            <button class="btn" type="button" disabled>Ask</button>
+            <input id="assistant-q" type="text" placeholder="e.g. Are we over-exposed to NOVA and AXON?" />
+            <button class="btn" id="assistant-ask" type="button">Ask</button>
           </div>
-          <div class="assistant-answer" id="assistant-answer">Assistant disabled — wire it to the MCP server and the organizer LLM service.</div>
+          <div class="assistant-answer" id="assistant-answer">Ask about the live portfolio, positions or P&amp;L.</div>
+        </section>
+
+        <section class="audit agent-audit">
+          <div class="section-head">
+            <h2>Agent audit trail</h2>
+            <span class="audit-meta">Session LLM spend: <span id="agent-token-total" class="mono">0 in / 0 out</span> tokens</span>
+          </div>
+          <p class="hint">A complete record of every assistant interaction this session — the question, the MCP tools it consulted (with citations), its confidence, token cost and the answer returned. Human review of AI output remains required.</p>
+          <table class="dense">
+            <thead><tr><th>Time (SGT)</th><th>Question</th><th>Model</th><th>Tools · citations</th><th>Confidence</th><th>Tokens</th><th>Answer</th></tr></thead>
+            <tbody id="agent-audit-body"></tbody>
+          </table>
         </section>
       </section>
     </main>
@@ -396,6 +408,7 @@
     <script src="js/chart.js"></script>
     <script src="js/tabs.js"></script>
     <script src="js/mcp.js"></script>
+    <script src="js/assistant.js"></script>
     <script src="js/api.js"></script>
     <script src="js/dashboard.js"></script>
   </body>

@@ -31,8 +31,9 @@ Vanilla HTML/CSS/JS + jQuery (pre-framework — you may refactor to React).
 
 ## What it deliberately lacks
 
-Heartbeat health, the conversational MCP panel, a predictive view, charts,
-order book, alerts, and dark mode — still open.
+Heartbeat health, a predictive view, charts, order book, alerts, and dark
+mode — still open. (The conversational MCP panel is now built — see the
+Assistant tab.)
 
 ## Run
 
@@ -81,5 +82,12 @@ baseline-dashboard/
 
 - Auth is `X-API-Key` on every call.
 - Prices/money are **integer cents** on the wire ($42.50 → `4250`).
-- The assistant panel (M4) consumes the provided MCP read server — see
-  `mcp-adapter.example.js` and `mcp-server-reference.md`.
+- The assistant panel (M4) runs the organizer LLM service (an Anthropic
+  Messages-shape endpoint) over the provided MCP read tools: the model picks a
+  read tool, the browser runs it, and the reply is rendered with the tool's
+  `source` + `as_of` citation and a confidence indicator. `server.js` proxies
+  `/llm/*` to `LLM_BASE_URL` (default `https://llm.codetoimpact.sg`) injecting the
+  team key, so it never reaches the browser. Every query, tool call, answer,
+  confidence and token spend is recorded in the **agent audit trail** on that
+  tab. See `js/assistant.js`, `mcp-server-reference.md` and `llm-api-reference.md`.
+  Requires the MCP server running (`MCP_BASE_URL`, default `:8091`).

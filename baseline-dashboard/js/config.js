@@ -10,4 +10,7 @@ const CONFIG = {
   MCP_RETRY_MS: 10000, // after an MCP failure, wait this long before trying again
   BOT_BASE_URL: "/bot", // same-origin proxy in server.js -> the bot's local control endpoint (config.yaml `control`, default 127.0.0.1:8092)
   BOT_STATUS_INTERVAL_MS: 3000, // poll GET /bot/status; local only, no exchange rate-limit cost
+  LLM_BASE_URL: "/llm", // same-origin proxy in server.js -> https://llm.codetoimpact.sg (adds the team key). Powers the M4 assistant
+  LLM_MODEL: "sonnet", // organiser LLM alias: fable | haiku | sonnet (default) | opus. Smaller = cheaper credit
+  LLM_MAX_TOKENS: 512, // cap per reply so a runaway answer can't burn the ~$25 credit grant
 };

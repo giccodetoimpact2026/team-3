@@ -30,6 +30,9 @@ const DashboardController = {
   tradeBuf: {}, // symbol -> [{ t, price, qty }] from SSE `trade`
   equity: [], // [{ t, value }] portfolio total_value snapshots (cents)
   audit: [], // [{ at, action, detail }] human actions this session
+  agentAudit: [], // [{ at, question, model, tools, tokens, answer, confidence, error }] every AI assistant interaction
+  _agentTokens: { input_tokens: 0, output_tokens: 0 }, // running LLM spend this session
+  _assistantBusy: false,
   chartSymbol: null,
   chartBucket: 60000,
   _newsConfig: null,
@@ -53,6 +56,7 @@ const DashboardController = {
     this.bindChartControls();
     this.bindNewsControls();
     this.bindManualControls();
+    this.bindAssistant();
     this.loadNewsConfig();
     this.pollBotStatus();
     setInterval(this.pollBotStatus.bind(this), CONFIG.BOT_STATUS_INTERVAL_MS);
@@ -654,6 +658,174 @@ const DashboardController = {
       );
     }).join("");
     $("#audit-body").html(html || "<tr><td colspan=\"3\" class=\"empty\">No human actions this session</td></tr>");
+  },
+
+  // --- Assistant (M4): LLM over the MCP read tools ------------------------
+  // The model chooses which read tool answers the question, the browser runs it
+  // against the MCP server, and the reply is rendered WITH the tool's source +
+  // as_of citation and a confidence indicator. Every interaction — question,
+  // each tool call, the answer, model and token spend — is written to the agent
+  // audit trail below, so there is no black box (M4 responsible-AI requirement).
+
+  bindAssistant: function () {
+    var self = this;
+    $("#assistant-q").prop("disabled", false);
+    $("#assistant-ask").prop("disabled", false).on("click", function () { self.askAssistant(); });
+    $("#assistant-q").on("keydown", function (e) { if (e.key === "Enter") self.askAssistant(); });
+    $("#assistant-answer").html("<span class=\"muted\">Ask about the live portfolio, positions or P&L. Answers are grounded in the MCP read tools and cited.</span>");
+    this.renderAgentAudit();
+  },
+
+  // POST a Messages body to the same-origin LLM proxy; reject with a readable
+  // error carrying the service/provider error code.
+  callLlm: function (body) {
+    return fetch(CONFIG.LLM_BASE_URL + "/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (json) {
+        if (!res.ok) {
+          var err = json && json.error;
+          var code = (err && (err.code || err.type)) || ("HTTP " + res.status);
+          var msg = (err && err.message) || res.statusText || ("HTTP " + res.status);
+          throw new Error(code + ": " + msg);
+        }
+        return json;
+      });
+    });
+  },
+
+  askAssistant: function () {
+    var self = this;
+    var q = ($("#assistant-q").val() || "").trim();
+    if (!q || this._assistantBusy) return;
+    this._assistantBusy = true;
+    $("#assistant-ask").prop("disabled", true);
+    $("#assistant-answer").html("<span class=\"muted\">Thinking… consulting the MCP read tools.</span>");
+
+    var body = Assistant.buildRequest(q, CONFIG.LLM_MODEL, CONFIG.LLM_MAX_TOKENS);
+    var mcpResponses = []; // successful/failed tool reads, for citations + confidence
+    var toolTrail = []; // human-readable per-tool-call lines for the audit
+    var usages = []; // per-round usage blocks to sum
+    var round = 0;
+
+    function step(reqBody) {
+      round += 1;
+      return self.callLlm(reqBody).then(function (reply) {
+        if (reply.usage) usages.push(reply.usage);
+        var toolUses = Assistant.toolUsesOf(reply);
+        if (toolUses.length && round <= Assistant.MAX_ROUNDS) {
+          var runs = toolUses.map(function (tu) {
+            if (!Assistant.isToolName(tu.name)) {
+              var unknown = { error: "unknown tool " + tu.name };
+              toolTrail.push(Assistant.summarizeResult(tu.name, unknown));
+              return Promise.resolve({ id: tu.id, result: unknown });
+            }
+            return Promise.resolve(MCP.callTool(tu.name, tu.input)).then(
+              function (r) {
+                mcpResponses.push(r);
+                toolTrail.push(Assistant.summarizeResult(tu.name, r));
+                return { id: tu.id, result: r };
+              },
+              function () {
+                var e = { error: "MCP " + tu.name + " unavailable" };
+                mcpResponses.push(e);
+                toolTrail.push(Assistant.summarizeResult(tu.name, e));
+                return { id: tu.id, result: e };
+              }
+            );
+          });
+          return Promise.all(runs).then(function (results) {
+            var next = {
+              model: reqBody.model,
+              max_tokens: reqBody.max_tokens,
+              system: reqBody.system,
+              tools: reqBody.tools,
+              messages: reqBody.messages.concat([Assistant.assistantEcho(reply), Assistant.toolResultMessage(results)]),
+            };
+            return step(next);
+          });
+        }
+        return { text: Assistant.textOf(reply) || "(the model returned no answer)", reply: reply };
+      });
+    }
+
+    step(body)
+      .then(function (out) {
+        var citations = Assistant.citationsFrom(mcpResponses);
+        var confidence = Assistant.confidence(mcpResponses);
+        var tokens = Assistant.sumUsage(usages);
+        self.renderAnswer(out.text, citations, confidence);
+        self.logAgentAudit({
+          question: q, model: CONFIG.LLM_MODEL, tools: toolTrail,
+          tokens: tokens, answer: out.text, confidence: confidence, error: null,
+        });
+      })
+      .catch(function (err) {
+        var tokens = Assistant.sumUsage(usages);
+        var msg = (err && err.message) || "assistant failed";
+        $("#assistant-answer").html(
+          "<span class=\"assistant-error\">Assistant unavailable — " + escapeHtml(msg) + "</span>"
+        );
+        self.logAgentAudit({
+          question: q, model: CONFIG.LLM_MODEL, tools: toolTrail,
+          tokens: tokens, answer: "", confidence: "low", error: msg,
+        });
+      })
+      .then(function () {
+        self._assistantBusy = false;
+        $("#assistant-ask").prop("disabled", false);
+      });
+  },
+
+  renderAnswer: function (text, citations, confidence) {
+    var cites = (citations || []).map(function (c) {
+      return "<span class=\"cite\">" + escapeHtml(c.source) + (c.as_of ? " · " + escapeHtml(c.as_of) : "") + "</span>";
+    }).join("");
+    var conf = "<span class=\"confidence " + escapeHtml(confidence) + "\">confidence: " + escapeHtml(confidence) + "</span>";
+    var citeLine = cites
+      ? "<div class=\"answer-cites\">Sources: " + cites + " " + conf + "</div>"
+      : "<div class=\"answer-cites\">No tool was consulted — ungrounded. " + conf + "</div>";
+    $("#assistant-answer").html("<div class=\"answer-text\">" + escapeHtml(text) + "</div>" + citeLine);
+  },
+
+  logAgentAudit: function (entry) {
+    entry.at = new Date();
+    this.agentAudit.push(entry);
+    this._agentTokens.input_tokens += (entry.tokens && entry.tokens.input_tokens) || 0;
+    this._agentTokens.output_tokens += (entry.tokens && entry.tokens.output_tokens) || 0;
+    // Mirror a one-line summary into the human Ops audit so a reviewer scanning
+    // that log sees the assistant was used, and when.
+    this.logAudit("Assistant query", entry.error ? ("failed: " + entry.error) : (entry.question));
+    this.renderAgentAudit();
+  },
+
+  renderAgentAudit: function () {
+    var rows = this.agentAudit.slice().reverse().map(function (a) {
+      var tools = (a.tools && a.tools.length)
+        ? a.tools.map(function (t) { return escapeHtml(t); }).join("<br>")
+        : "<span class=\"muted\">none</span>";
+      var tok = a.tokens ? (a.tokens.input_tokens + " in / " + a.tokens.output_tokens + " out") : "—";
+      var answer = a.error
+        ? "<span class=\"assistant-error\">" + escapeHtml(a.error) + "</span>"
+        : escapeHtml(a.answer || "");
+      return (
+        "<tr>" +
+        "<td class=\"mono\">" + escapeHtml(formatSgt(a.at)) + "</td>" +
+        "<td>" + escapeHtml(a.question) + "</td>" +
+        "<td class=\"mono\">" + escapeHtml(a.model) + "</td>" +
+        "<td class=\"mono small\">" + tools + "</td>" +
+        "<td><span class=\"confidence " + escapeHtml(a.confidence || "") + "\">" + escapeHtml(a.confidence || "—") + "</span></td>" +
+        "<td class=\"mono\">" + escapeHtml(tok) + "</td>" +
+        "<td>" + answer + "</td>" +
+        "</tr>"
+      );
+    }).join("");
+    $("#agent-audit-body").html(rows || "<tr><td colspan=\"7\" class=\"empty\">No assistant queries this session</td></tr>");
+    $("#agent-token-total").text(
+      this._agentTokens.input_tokens + " in / " + this._agentTokens.output_tokens + " out"
+    );
   },
 
   // --- Scaffolds (need bot endpoints) -------------------------------------
