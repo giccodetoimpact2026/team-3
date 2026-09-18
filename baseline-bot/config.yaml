@@ -5,8 +5,8 @@
 # against sandbox, never against the live session.
 
 exchange:
-  base_url: "http://exchange.gic-hackathon.internal"   # sandbox/live URL from the platform team
-  api_key: "REPLACE_WITH_TEAM_API_KEY"
+  base_url: "http://api.codetoimpact.sg"   # sandbox/live URL from the platform team
+  api_key: "c2i_iI2w1FrCqVhrxl-cqMaauw4O6bCwqKZ2"
 
 instruments:
   # Only NOVA and ELXR are traded by the baseline. AXON/CRVX/DRFT are left for
@@ -26,7 +26,7 @@ strategy:
     type: mean_reversion
     # lookback feels short — mean-reversion is throwing false signals. Check
     # James Wee's strategy notes before trusting this number.
-    lookback_samples: 5
+    lookback_samples: 15
     deviation_threshold: 0.004
     trade_quantity: 50
     limit_offset_bps: 5

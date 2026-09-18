@@ -26,3 +26,16 @@ def test_no_signal_inside_band():
     for p in (10_000, 10_000, 10_000, 10_000):
         s.on_price(p)
     assert s.signal(position=0) is None
+
+
+def test_elxr_production_lookback_waits_for_15_samples():
+    cfg = {"lookback_samples": 15, "deviation_threshold": 0.004,
+           "trade_quantity": 50, "limit_offset_bps": 5}
+    s = MeanReversionStrategy("ELXR", cfg)
+    for _ in range(14):
+        s.on_price(10_000)
+
+    assert s.signal(position=0) is None
+
+    s.on_price(9_000)
+    assert s.signal(position=0) is not None
