@@ -68,3 +68,12 @@ const BotAPI = {
     });
   },
 };
+
+// The parameter-sweep backtest is a batch artifact, not live exchange data: the
+// bot's run_backtest.py writes results.json, a copy of which is committed at
+// data/backtest.json and served as a same-origin static file (no key, no proxy).
+const BacktestAPI = {
+  fetch: function () {
+    return $.getJSON("data/backtest.json");
+  },
+};
