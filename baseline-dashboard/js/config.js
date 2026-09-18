@@ -20,6 +20,7 @@ const CONFIG = {
   CORRELATION_BUCKET_MS: 5000,
   CORRELATION_BUCKETS: 60, // 5 minutes of 5 s buckets
   LLM_HEALTH_INTERVAL_MS: 60000, // GET /llm/health probe for the system-health strip (public, no credit)
+  QUIET_FEED_POLL_MS: 30000, // when the SSE feed is connected but silent (between windows), read the portfolio this often instead of never
   ANNOUNCEMENTS_KEPT: 5, // announcement impact cards kept on screen
   ALERT_THRESHOLDS: { drawdownPct: 15, instrumentDropPct: 10, heartbeatDeadS: 15 }, // Priya: 15% of starting capital
 };

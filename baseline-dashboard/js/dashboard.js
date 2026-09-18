@@ -48,6 +48,7 @@ const DashboardController = {
   _exchangeError: null, // HTTP status of the last failed exchange read, or null
   _mcpOkAt: 0,
   _prev: {}, // last rendered numeric values, for the change flash
+  sessionStatus: null, // last SSE session status: open | halted | closed
 
   init: function () {
     this.cursor = new FeedCursor();
@@ -55,7 +56,7 @@ const DashboardController = {
     this.markUnavailable("Connecting…");
     this.renderTimestamp();
     var self0 = this;
-    setInterval(function () { self0.renderTimestamp(); self0.renderHealth(); }, 1000);
+    setInterval(function () { self0.renderTimestamp(); self0.renderHealth(); self0.tickAges(); self0.pollIfQuiet(); }, 1000);
     $(document).on("click", ".btn.why", function () {
       AssistantPanel.explainOrder($(this).attr("data-order"), $(this).attr("data-symbol"));
     });
@@ -173,7 +174,8 @@ const DashboardController = {
     var open = Analytics.openOrderRows ? Analytics.openOrderRows(this.orders, Date.now()) : [];
     open.forEach(function (o) { o.strategy = strategyOf[o.id]; });
     var resting = open.filter(function (o) { return o.symbol === self.chartSymbol; }).map(function (o) { return { side: o.side.toLowerCase(), price: o.price, remaining: o.remaining }; });
-    Panels.renderChart(this.chartSymbol, chartSamples, fills, this.forecasts[this.chartSymbol], resting);
+    var silence = Analytics.feedSilenceNote ? Analytics.feedSilenceNote({ lastEventAt: this._lastEventAt, sessionStatus: this.sessionStatus }, Date.now()) : null;
+    Panels.renderChart(this.chartSymbol, chartSamples, fills, this.forecasts[this.chartSymbol], resting, silence);
     if (Panels.renderOpenOrders) Panels.renderOpenOrders(open);
 
     Panels.renderFillRate(Analytics.fillRateRows(this.orders, this.history, symbols));
@@ -581,7 +583,7 @@ const DashboardController = {
         var flash = typeof prevU === "number" && typeof curU === "number" && prevU !== curU ? (curU > prevU ? " flash-up" : " flash-down") : "";
         self._prev["pos:" + r.symbol] = curU;
         return (
-          "<tr>" +
+          "<tr data-symbol=\"" + escapeHtml(r.symbol) + "\">" +
           "<td>" + escapeHtml(r.symbol) + ageHtml + "</td>" +
           "<td>" + escapeHtml(r.quantity) + "</td>" +
           "<td>" + escapeHtml(r.avg_cost) + "</td>" +
@@ -702,7 +704,29 @@ const DashboardController = {
     $("#pnl-source").text(label).addClass("stale");
   },
 
+  // Ages shown next to each position tick every second even when nothing
+  // arrives, so a frozen "5s" can never pass as live.
+  tickAges: function () {
+    var self = this, now = Date.now();
+    $("#positions-body tr[data-symbol]").each(function () {
+      var last = self.prices ? self.prices.last($(this).attr("data-symbol")) : null;
+      var $age = $(this).find(".age");
+      if (!last || !$age.length) return;
+      var s = Math.round((now - last.t) / 1000);
+      $age.text(s >= 60 ? Math.floor(s / 60) + "m" : s + "s").toggleClass("old", s > 20);
+    });
+  },
+
+  // Between windows the feed is silent and nothing triggers a read; one slow
+  // portfolio read keeps the figures and the health strip honest.
+  pollIfQuiet: function () {
+    if (!Analytics.quietFeedPollDue) return;
+    var due = Analytics.quietFeedPollDue({ feedOnline: this._feedOnline, lastEventAt: this._lastEventAt, lastReadAt: this._lastAt.portfolio }, Date.now(), { silenceMs: 20000, pollMs: CONFIG.QUIET_FEED_POLL_MS || 30000 });
+    if (due) { this.refreshPortfolio(); this.requestPanels(); }
+  },
+
   renderSession: function (status) {
+    this.sessionStatus = status || null;
     var $b = $("#session-badge");
     $b.removeClass("open halted closed").addClass(status || "").text(status ? String(status).toUpperCase() : "—");
   },

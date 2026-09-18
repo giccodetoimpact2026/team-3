@@ -152,3 +152,25 @@ test("healthItems: exchange rate-limited is warn, never read is unknown; MCP fai
   assert.strictEqual(A.healthItems({ llm: { state: "warn", detail: "rate limited" } }, now)[4].state, "warn");
   assert.strictEqual(A.healthItems({}, now)[4].state, "unknown");
 });
+
+test("quietFeedPollDue: only when the feed is connected but silent, and the last read is old", () => {
+  const now = 1000000;
+  const opts = { silenceMs: 20000, pollMs: 30000 };
+  assert.strictEqual(A.quietFeedPollDue({ feedOnline: true, lastEventAt: now - 25000, lastReadAt: now - 31000 }, now, opts), true);
+  assert.strictEqual(A.quietFeedPollDue({ feedOnline: true, lastEventAt: now - 5000, lastReadAt: now - 31000 }, now, opts), false, "events flowing: event-driven reads suffice");
+  assert.strictEqual(A.quietFeedPollDue({ feedOnline: true, lastEventAt: now - 25000, lastReadAt: now - 10000 }, now, opts), false, "read is recent");
+  assert.strictEqual(A.quietFeedPollDue({ feedOnline: false, lastEventAt: now - 25000, lastReadAt: now - 31000 }, now, opts), false, "disconnected: EventSource reconnect handles it");
+  assert.strictEqual(A.quietFeedPollDue({ feedOnline: true, lastEventAt: 0, lastReadAt: 0 }, now, opts), false, "nothing seen yet");
+});
+
+test("feedSilenceNote: explains a quiet feed, naming the session state when known", () => {
+  const now = Date.UTC(2026, 8, 18, 6, 6, 49);
+  const last = Date.UTC(2026, 8, 18, 6, 1, 38);
+  const closed = A.feedSilenceNote({ lastEventAt: last, sessionStatus: "closed" }, now);
+  assert.ok(closed.includes("14:01:38"), closed);
+  assert.ok(/closed/i.test(closed) && /between .*windows|next window/i.test(closed), closed);
+  const open = A.feedSilenceNote({ lastEventAt: last, sessionStatus: "open" }, now);
+  assert.ok(/5m 11s|311s/.test(open) && /open/i.test(open), open);
+  assert.strictEqual(A.feedSilenceNote({ lastEventAt: now - 3000, sessionStatus: "open" }, now), null, "not silent");
+  assert.strictEqual(A.feedSilenceNote({ lastEventAt: 0 }, now), null, "never had an event");
+});

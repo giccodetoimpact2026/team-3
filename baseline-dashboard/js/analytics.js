@@ -277,5 +277,32 @@
     return items;
   }
 
-  return { healthItems: healthItems, heatTiles: heatTiles, fillRateRows: fillRateRows, exposureRows: exposureRows, netExposure: netExposure, evaluateAlerts: evaluateAlerts, performanceRows: performanceRows, sessionSummary: sessionSummary, openOrderRows: openOrderRows, DEFAULT_THRESHOLDS: DEFAULT_THRESHOLDS };
+  // Between trading windows (and during a stall) the exchange sends no events,
+  // and the dashboard's reads are event-driven, so figures would freeze. When
+  // the feed is connected but silent, allow one slow portfolio read per pollMs.
+  function quietFeedPollDue(ctx, now, opts) {
+    ctx = ctx || {}; opts = opts || {};
+    var silenceMs = opts.silenceMs || 20000, pollMs = opts.pollMs || 30000;
+    if (!ctx.feedOnline || !ctx.lastEventAt) return false;
+    if (now - ctx.lastEventAt < silenceMs) return false;
+    return !ctx.lastReadAt || now - ctx.lastReadAt >= pollMs;
+  }
+
+  function fmtSpan(s) { return s >= 60 ? Math.floor(s / 60) + "m " + (s % 60) + "s" : s + "s"; }
+
+  // Human explanation for a quiet feed, shown where a chart or table would
+  // otherwise look broken. null when events are flowing.
+  function feedSilenceNote(ctx, now, silenceMs) {
+    ctx = ctx || {};
+    if (!ctx.lastEventAt) return null;
+    var s = Math.round((now - ctx.lastEventAt) / 1000);
+    if (s * 1000 < (silenceMs || 20000)) return null;
+    var at = fmt.formatSgt(ctx.lastEventAt).slice(11, 19) + " SGT";
+    var st = String(ctx.sessionStatus || "").toLowerCase();
+    if (st === "closed") return "No price events since " + at + ": the session is CLOSED and the exchange sends no prices between trading windows. The chart restarts when the next window opens.";
+    if (st === "halted") return "No price events since " + at + ": the session is HALTED. Prices resume when the exchange reopens.";
+    return "No price events for " + fmtSpan(s) + " (last at " + at + ") while the session reads " + (st ? st.toUpperCase() : "unknown") + ". The feed is connected; the market may simply be quiet.";
+  }
+
+  return { quietFeedPollDue: quietFeedPollDue, feedSilenceNote: feedSilenceNote, healthItems: healthItems, heatTiles: heatTiles, fillRateRows: fillRateRows, exposureRows: exposureRows, netExposure: netExposure, evaluateAlerts: evaluateAlerts, performanceRows: performanceRows, sessionSummary: sessionSummary, openOrderRows: openOrderRows, DEFAULT_THRESHOLDS: DEFAULT_THRESHOLDS };
 });

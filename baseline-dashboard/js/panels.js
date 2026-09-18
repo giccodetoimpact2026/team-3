@@ -80,11 +80,15 @@ const Panels = {
     $tabs.find("button").each(function () { $(this).toggleClass("active", $(this).attr("data-symbol") === current); });
   },
 
-  renderChart: function (symbol, samples, fills, forecast, resting) {
+  renderChart: function (symbol, samples, fills, forecast, resting, note) {
     samples = samples || [];
     fills = fills || [];
     resting = resting || [];
-    $("#chart-box").html(Chart.chartSvg({ symbol: symbol || "", samples: samples, fills: fills, forecast: forecast || null, orders: resting, width: 900, height: 260 }));
+    // One sample cannot make a line; show the placeholder instead of a flat axis.
+    var drawn = samples.length >= 2 ? samples : [];
+    $("#chart-box").html(Chart.chartSvg({ symbol: symbol || "", samples: drawn, fills: drawn.length ? fills : [], forecast: drawn.length ? (forecast || null) : null, orders: resting, width: 900, height: 260 }));
+    if (note) { $("#chart-meta").text(note).addClass("stale-note"); return; }
+    $("#chart-meta").removeClass("stale-note");
     var meta = samples.length + " price samples";
     if (fills.length) meta += " · " + fills.length + " of our fills";
     if (resting.length) meta += " · " + resting.length + " resting order" + (resting.length === 1 ? "" : "s") + " (dashed)";
