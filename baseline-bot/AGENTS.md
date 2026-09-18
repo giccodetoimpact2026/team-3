@@ -67,3 +67,11 @@ announcement parsing, SGT/number formatting. CI (lint + tests on push) is in
 
 Prefer asking for the spec reference over guessing. If a change touches orders,
 risk, or shutdown behaviour, flag it for human review.
+
+## Regime integration
+
+`strategies/regime.py` classifies price histories; `regime_policy.py` controls
+entry sizing. `regime_adapter.py` keeps bounded per-symbol histories and maps
+directional trend/shock labels to the policy labels. The configured adapter is
+ready to use, but regime sizing stays disabled by default. Classifier and policy
+tests are separate; run both when changing their interface.

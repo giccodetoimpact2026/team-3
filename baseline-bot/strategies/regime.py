@@ -1,250 +1,232 @@
-"""Regime-aware strategy modification (James Wee's notes, page 3).
+"""Price-only market-regime classification.
 
-Page 3 is the section "the desk most wants implemented", and its complaint is
-specific: "Momentum bleeds money in flat, low-volatility markets — it keeps
-trading a trend that isn't there." Adeline Loh said the same from the execution
-desk: "When NOVA goes sideways ... momentum bleeds money slowly. The bot should
-detect that and switch or cut size."
+The exchange does not expose candles, so this module works with an ordered
+sequence of price samples accumulated from SSE ``price`` events (or closes from
+locally-built fixed-time bars).  It deliberately classifies market state only;
+strategy routing belongs to a separate coordinator.
 
-Page 3 also dictates the shape: "a regime check that runs before strategy
-selection and routes to the right strategy instance — not a giant if-else in the
-main loop. A clean BaseStrategy + a router/decorator is the right shape." So the
-decision lives in a table here, and the trading path makes one call.
-
-Two halves, deliberately separated:
-
-* CLASSIFICATION — which regime a symbol is in — is somebody else's problem.
-  This module only defines the seam (`RegimeClassifier`). Hysteresis lives
-  there too: page 3 asks for "hysteresis so it doesn't flip-flop on the
-  boundary", and debouncing a label is a property of the labeller, not of the
-  consumer. Per-instrument thresholds likewise ("the thin name will look more
-  volatile per sample even when nothing is happening").
-
-* POLICY — what a regime does to a signal — is here, driven by config.
-
-The policy can only ever REDUCE risk:
-
-* A sell is never touched. Regime must not trap us in a position, exactly as a
-  correlated-group cap must not block the sell that unwinds a breach. A label
-  that can stop us getting out is a bug, not a risk control.
-* A buy is scaled by a multiplier in [0, 1]. Zero means no new entries.
-
-Where it sits in the chain: exits override everything, then the strategy
-produces a signal, then a news bias may enlarge or generate one, and regime runs
-LAST as the final gate on how much risk we add. News can raise size; regime can
-only trim it. That ordering means a SHOCK regime — usually caused by the very
-announcement the news engine reacted to — still gets the final word.
+ATR-like volatility measures the average absolute sample-to-sample move.
+Directional efficiency distinguishes a clean trend from equally volatile
+back-and-forth noise.  Shock detection compares the newest move with the ATR
+that existed *before* that move, so the shock does not dilute its own score.
 """
 
+from __future__ import annotations
 
-class Regime:
-    """The six labels the classifier emits."""
-
-    TREND = "TREND"
-    RANGE = "RANGE"
-    COMPRESSION = "COMPRESSION"
-    SHOCK = "SHOCK"
-    NEUTRAL = "NEUTRAL"
-    WARMUP = "WARMUP"
-
-    ALL = (TREND, RANGE, COMPRESSION, SHOCK, NEUTRAL, WARMUP)
+from dataclasses import dataclass
+from enum import Enum
+from math import isfinite
+from typing import Iterable
 
 
-# Strategy class name -> policy family. Keyed on the class rather than on the
-# config `type` string so a renamed config key cannot silently fall through to
-# the default policy.
-FAMILY_BY_CLASS = {
-    "MomentumStrategy": "momentum",
-    "MeanReversionStrategy": "mean_reversion",
-    "PairsFollowStrategy": "pairs_follow",
-}
+class Regime(str, Enum):
+    """Actionable price regimes emitted by the classifier."""
+
+    WARMUP = "warmup"
+    COMPRESSION = "compression"
+    RANGE = "range"
+    NEUTRAL = "neutral"
+    TREND_UP = "trend_up"
+    TREND_DOWN = "trend_down"
+    SHOCK_UP = "shock_up"
+    SHOCK_DOWN = "shock_down"
+
+
+@dataclass(frozen=True)
+class RegimeConfig:
+    """Thresholds for price-only regime classification.
+
+    Defaults are starting hypotheses from the strategy optimisation playbook.
+    They should be tuned on captured sandbox windows, preferably using
+    fixed-time price bars rather than irregular raw ticks.
+    """
+
+    atr_lookback: int = 14
+    trend_lookback: int = 15
+    low_volatility_pct: float = 0.0015
+    trend_efficiency_min: float = 0.60
+    range_efficiency_max: float = 0.30
+    trend_move_atr_min: float = 2.0
+    shock_atr_multiple: float = 4.0
+
+    def __post_init__(self) -> None:
+        if self.atr_lookback < 2:
+            raise ValueError("atr_lookback must be at least 2")
+        if self.trend_lookback < 2:
+            raise ValueError("trend_lookback must be at least 2")
+        if self.low_volatility_pct < 0:
+            raise ValueError("low_volatility_pct cannot be negative")
+        if not 0 <= self.range_efficiency_max <= 1:
+            raise ValueError("range_efficiency_max must be between 0 and 1")
+        if not 0 <= self.trend_efficiency_min <= 1:
+            raise ValueError("trend_efficiency_min must be between 0 and 1")
+        if self.range_efficiency_max >= self.trend_efficiency_min:
+            raise ValueError(
+                "range_efficiency_max must be below trend_efficiency_min"
+            )
+        if self.trend_move_atr_min <= 0:
+            raise ValueError("trend_move_atr_min must be positive")
+        if self.shock_atr_multiple <= 0:
+            raise ValueError("shock_atr_multiple must be positive")
+
+
+@dataclass(frozen=True)
+class RegimeResult:
+    """Regime plus the measurements that explain the classification."""
+
+    regime: Regime
+    previous_regime: Regime | None
+    changed: bool
+    sample_count: int
+    atr: float | None
+    atr_pct: float | None
+    efficiency_ratio: float | None
+    return_pct: float | None
+    move_atr: float | None
+    shock_score: float | None
+
+    @property
+    def transition(self) -> str | None:
+        """Return a log-friendly ``old->new`` label when a change occurred."""
+
+        if not self.changed or self.previous_regime is None:
+            return None
+        return f"{self.previous_regime.value}->{self.regime.value}"
+
+
+def _prices(values: Iterable[int | float]) -> list[float]:
+    prices = [float(value) for value in values]
+    if any(not isfinite(price) or price <= 0 for price in prices):
+        raise ValueError("prices must be finite positive numbers")
+    return prices
+
+
+def _mean(values: list[float]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
+def _result(
+    regime: Regime,
+    previous_regime: Regime | None,
+    sample_count: int,
+    *,
+    atr: float | None = None,
+    atr_pct: float | None = None,
+    efficiency_ratio: float | None = None,
+    return_pct: float | None = None,
+    move_atr: float | None = None,
+    shock_score: float | None = None,
+) -> RegimeResult:
+    return RegimeResult(
+        regime=regime,
+        previous_regime=previous_regime,
+        changed=previous_regime is not None and regime != previous_regime,
+        sample_count=sample_count,
+        atr=atr,
+        atr_pct=atr_pct,
+        efficiency_ratio=efficiency_ratio,
+        return_pct=return_pct,
+        move_atr=move_atr,
+        shock_score=shock_score,
+    )
+
+
+def classify_regime(
+    values: Iterable[int | float],
+    previous_regime: Regime | None = None,
+    config: RegimeConfig | None = None,
+) -> RegimeResult:
+    """Classify an ordered price history and describe any regime change.
+
+    Classification precedence is shock, trend, compression, range, neutral.
+    A shock is evaluated first because risk controls should react immediately.
+    Trend requires both directional efficiency and a minimum net move in ATR
+    units; ATR by itself never implies a trend.
+    """
+
+    cfg = config or RegimeConfig()
+    prices = _prices(values)
+    minimum_samples = max(cfg.trend_lookback, cfg.atr_lookback + 2)
+    if len(prices) < minimum_samples:
+        return _result(Regime.WARMUP, previous_regime, len(prices))
+
+    moves = [abs(current - prior) for prior, current in zip(prices, prices[1:])]
+
+    # Report current ATR using the latest moves.  For shock detection, exclude
+    # the newest move so an extreme event cannot inflate its own baseline.
+    atr = _mean(moves[-cfg.atr_lookback :])
+    prior_atr = _mean(moves[-(cfg.atr_lookback + 1) : -1])
+    atr_pct = atr / prices[-1]
+
+    trend_prices = prices[-cfg.trend_lookback :]
+    trend_moves = [
+        abs(current - prior)
+        for prior, current in zip(trend_prices, trend_prices[1:])
+    ]
+    net_move = trend_prices[-1] - trend_prices[0]
+    path_length = sum(trend_moves)
+    efficiency = abs(net_move) / path_length if path_length else 0.0
+    return_pct = net_move / trend_prices[0]
+
+    if atr > 0:
+        move_atr = abs(net_move) / atr
+    else:
+        move_atr = 0.0 if net_move == 0 else float("inf")
+
+    newest_move = prices[-1] - prices[-2]
+    if prior_atr > 0:
+        shock_score = abs(newest_move) / prior_atr
+    else:
+        shock_score = 0.0 if newest_move == 0 else float("inf")
+
+    measurements = {
+        "atr": atr,
+        "atr_pct": atr_pct,
+        "efficiency_ratio": efficiency,
+        "return_pct": return_pct,
+        "move_atr": move_atr,
+        "shock_score": shock_score,
+    }
+
+    if shock_score >= cfg.shock_atr_multiple:
+        regime = Regime.SHOCK_UP if newest_move > 0 else Regime.SHOCK_DOWN
+    elif (
+        efficiency >= cfg.trend_efficiency_min
+        and move_atr >= cfg.trend_move_atr_min
+    ):
+        regime = Regime.TREND_UP if net_move > 0 else Regime.TREND_DOWN
+    elif atr_pct <= cfg.low_volatility_pct:
+        regime = Regime.COMPRESSION
+    elif efficiency <= cfg.range_efficiency_max:
+        regime = Regime.RANGE
+    else:
+        regime = Regime.NEUTRAL
+
+    return _result(
+        regime,
+        previous_regime,
+        len(prices),
+        **measurements,
+    )
 
 
 class RegimeClassifier:
-    """The seam a classifier implements. Not an ABC, just the contract.
+    """Stateful convenience wrapper for repeated live classifications.
 
-    `observe` is called for every price event, before `classify`, so the
-    implementation can keep its own buffers rather than reaching into the
-    strategies. `classify` must return one of `Regime.ALL`; anything else is
-    treated as WARMUP by the policy, which is the fail-safe label.
+    The caller owns the price history.  This object stores only the last emitted
+    regime so it can report transitions.  Call ``reset`` at a session boundary.
+    Hysteresis/confirmation belongs in the future routing layer, not this first
+    price classifier.
     """
 
-    def observe(self, symbol: str, price: int) -> None:
-        raise NotImplementedError
+    def __init__(self, config: RegimeConfig | None = None):
+        self.config = config or RegimeConfig()
+        self.previous_regime: Regime | None = None
 
-    def classify(self, symbol: str) -> str:
-        raise NotImplementedError
+    def classify(self, values: Iterable[int | float]) -> RegimeResult:
+        result = classify_regime(values, self.previous_regime, self.config)
+        self.previous_regime = result.regime
+        return result
 
-
-class StaticRegimeClassifier(RegimeClassifier):
-    """Reports one fixed regime. For tests and for pinning behaviour."""
-
-    def __init__(self, regime: str = Regime.NEUTRAL, per_symbol: dict | None = None):
-        self.regime = regime
-        self.per_symbol = dict(per_symbol or {})
-
-    def observe(self, symbol: str, price: int) -> None:
-        pass
-
-    def classify(self, symbol: str) -> str:
-        return self.per_symbol.get(symbol, self.regime)
-
-
-# Defaults straight out of page 3, for any family/regime the config omits.
-#
-#   RANGE       momentum "will bleed" in a flat market -> suspend it; the
-#               range is exactly where mean-reversion belongs.
-#   TREND       momentum active. Mean-reversion in a trend is the falling-knife
-#               case James warns about on page 2 — it reads a downtrend as a run
-#               of dips — so it is suspended, not merely trimmed.
-#   COMPRESSION low volatility and a narrow range: momentum has no trend to ride
-#               and mean-reversion has no deviation worth capturing. Page 3's
-#               other suggestion here is market-making, which is still DISABLED,
-#               so cut size instead of switching.
-#   NEUTRAL     page 3 verbatim: "hold current posture, reduce size".
-#   SHOCK       a violent repricing. Mean-reversion is at its most dangerous
-#               (the move is information, not noise) and momentum at its most
-#               whipsawed. No new entries; exits still work.
-#   WARMUP      not enough data to classify. Never trade on an unknown regime.
-DEFAULT_POLICY = {
-    "momentum": {
-        Regime.TREND: 1.0,
-        Regime.RANGE: 0.0,
-        Regime.COMPRESSION: 0.25,
-        Regime.SHOCK: 0.0,
-        Regime.NEUTRAL: 0.5,
-        Regime.WARMUP: 0.0,
-    },
-    "mean_reversion": {
-        Regime.TREND: 0.0,
-        Regime.RANGE: 1.0,
-        Regime.COMPRESSION: 0.5,
-        Regime.SHOCK: 0.0,
-        Regime.NEUTRAL: 0.5,
-        Regime.WARMUP: 0.0,
-    },
-    # A follower trades the LEADER's breakout, so it is the leader's regime that
-    # matters — see RegimePolicy.regime_for. The multipliers mirror momentum's,
-    # because a breakout signal is a momentum signal wearing another instrument.
-    "pairs_follow": {
-        Regime.TREND: 1.0,
-        Regime.RANGE: 0.0,
-        Regime.COMPRESSION: 0.25,
-        Regime.SHOCK: 0.0,
-        Regime.NEUTRAL: 0.5,
-        Regime.WARMUP: 0.0,
-    },
-}
-
-
-class RegimePolicy:
-    """Maps (strategy family, regime) -> size multiplier for a new entry.
-
-    `per_symbol` overrides the family table for one instrument, for the case
-    page 3 flags: parameters "are *per-instrument* — the thin name will look
-    more volatile per sample even when nothing is happening".
-    """
-
-    def __init__(self, config: dict | None = None):
-        config = config or {}
-        self.enabled = bool(config.get("enabled", False))
-
-        self._policy = {family: dict(table)
-                        for family, table in DEFAULT_POLICY.items()}
-        for family, table in (config.get("policy") or {}).items():
-            if family not in self._policy:
-                raise ValueError(
-                    f"regime.policy: unknown strategy family {family!r}; "
-                    f"expected one of {sorted(self._policy)}")
-            for regime, size in (table or {}).items():
-                self._policy[family][_regime(f"regime.policy.{family}", regime)] = \
-                    _multiplier(f"regime.policy.{family}.{regime}", size)
-
-        self._per_symbol = {}
-        for symbol, table in (config.get("per_symbol") or {}).items():
-            self._per_symbol[symbol] = {
-                _regime(f"regime.per_symbol.{symbol}", regime):
-                    _multiplier(f"regime.per_symbol.{symbol}.{regime}", size)
-                for regime, size in (table or {}).items()
-            }
-
-    # --- lookup -----------------------------------------------------------
-
-    @staticmethod
-    def family_of(strategy) -> str:
-        family = FAMILY_BY_CLASS.get(type(strategy).__name__)
-        if family is None:
-            raise ValueError(
-                f"{type(strategy).__name__} has no regime family; add it to "
-                f"strategies.regime.FAMILY_BY_CLASS")
-        return family
-
-    @staticmethod
-    def regime_for(strategy, classifier) -> str:
-        """The regime that governs this strategy.
-
-        A follower reads its LEADER's regime: AXON's entry is triggered by
-        NOVA breaking out, so whether that breakout means anything is a question
-        about NOVA's market state, not AXON's.
-        """
-        subject = getattr(strategy, "leader", None) or strategy
-        return classifier.classify(subject.symbol)
-
-    def multiplier(self, symbol: str, family: str, regime: str) -> float:
-        if regime not in Regime.ALL:
-            # An unrecognised label is treated as WARMUP: never trade on a
-            # regime we cannot interpret.
-            regime = Regime.WARMUP
-        override = self._per_symbol.get(symbol)
-        if override is not None and regime in override:
-            return override[regime]
-        return self._policy[family][regime]
-
-    def table(self, family: str | None = None):
-        """The policy in force, for startup logging and the dashboard."""
-        if family is None:
-            return {f: dict(t) for f, t in self._policy.items()}
-        return dict(self._policy[family])
-
-    # --- application ------------------------------------------------------
-
-    def apply(self, symbol: str, strategy, signal, classifier):
-        """Scale or veto `signal` for the current regime.
-
-        Returns the signal (possibly resized), or None to place nothing. A sell
-        is returned untouched: regime never blocks risk reduction.
-        """
-        if signal is None or not self.enabled:
-            return signal
-        if signal.side != "buy":
-            return signal
-
-        regime = self.regime_for(strategy, classifier)
-        size = self.multiplier(symbol, self.family_of(strategy), regime)
-        if size >= 1.0:
-            return signal
-
-        scaled = int(signal.quantity * size)
-        if scaled < 1:
-            # Either the regime forbids entries, or the clip rounded away to
-            # nothing — a 0-share order is a 400 ORDER_QUANTITY_INVALID.
-            return None
-        signal.quantity = scaled
-        return signal
-
-
-def _regime(where: str, value) -> str:
-    if value not in Regime.ALL:
-        raise ValueError(
-            f"{where}: unknown regime {value!r}; expected one of "
-            f"{list(Regime.ALL)}")
-    return value
-
-
-def _multiplier(where: str, value) -> float:
-    value = float(value)
-    if not 0 <= value <= 1:
-        # Above 1 would let a regime label *increase* risk, which is the one
-        # thing this layer must never do.
-        raise ValueError(f"{where}: size multiplier must be in [0, 1], got {value}")
-    return value
+    def reset(self) -> None:
+        self.previous_regime = None

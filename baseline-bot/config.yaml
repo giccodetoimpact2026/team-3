@@ -26,7 +26,7 @@
 
 exchange:
   base_url: "https://api.codetoimpact.sg"   # sandbox/live URL from the platform team
-  api_key: "c2i_iI2w1FrCqVhrxl-cqMaauw4O6bCwqKZ2"
+  api_key: "REPLACE_WITH_TEAM_API_KEY"
 
 instruments:
   active:
@@ -88,7 +88,7 @@ strategy:
 # Regime-aware sizing (James Wee, page 3 — "this is the one that matters").
 #
 # CLASSIFICATION is a separate component: point `classifier` at a dotted path to
-# something implementing strategies.regime.RegimeClassifier (observe + classify,
+# something implementing strategies.regime_policy.RegimeClassifier (observe + classify,
 # returning one of TREND / RANGE / COMPRESSION / SHOCK / NEUTRAL / WARMUP).
 # Hysteresis — page 3's "so it doesn't flip-flop on the boundary" — belongs
 # there: debouncing a label is a property of the labeller, not of this table.
@@ -103,10 +103,10 @@ strategy:
 # trading without saying why.
 regime:
   enabled: false
-  # classifier: "regime_classifier.AtrRegimeClassifier"
+  classifier: "strategies.regime_adapter.AtrRegimeClassifier"
   # static_regime: "TREND"       # pin one regime for a demo or a bisect
 
-  # Omitted (family, regime) pairs fall back to strategies.regime.DEFAULT_POLICY,
+  # Omitted (family, regime) pairs fall back to strategies.regime_policy.DEFAULT_POLICY,
   # which is these values. Restated here so the table is visible to the desk.
   policy:
     momentum:

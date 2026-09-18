@@ -12,6 +12,10 @@ The starting Python bot for the GIC hackathon simulated exchange. It is
   DRFT are not traded by the baseline — adding them is your work.
 - Accumulates its own price history from SSE `price` events (there is no candles
   endpoint) and logs to stdout.
+- Provides a strategy-agnostic price-regime classifier in
+  `strategies/regime.py`. It reports warmup, compression, range, neutral,
+  up/down trend and up/down shock using ATR-like volatility plus directional
+  efficiency. It is tested but not yet connected to strategy routing.
 
 ## What it deliberately lacks
 
@@ -52,7 +56,7 @@ baseline-bot/
 ├── config.yaml                 # exchange + per-instrument strategy + risk
 ├── main.py                     # wiring and the run loop
 ├── exchange/{client.py, feed.py}
-├── strategies/{base.py, momentum.py, mean_reversion.py}  # market_making.py.DISABLED (bonus)
+├── strategies/{base.py, momentum.py, mean_reversion.py, regime.py}
 ├── risk/limits.py
 ├── utils/logger.py
 ├── tests/                      # starter strategy tests

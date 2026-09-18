@@ -25,7 +25,7 @@ from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
 from news.engine import NewsEngine
 from strategies.pairs import PairsFollowStrategy
-from strategies.regime import RegimePolicy, StaticRegimeClassifier
+from strategies.regime_policy import RegimePolicy, StaticRegimeClassifier
 from utils.control import ControlServer
 from utils.event_worker import EventWorker
 from utils.logger import log
@@ -104,7 +104,7 @@ def build_regime_classifier(regime_cfg):
 
     The classifier is somebody else's component; this only has to find it. Point
     `regime.classifier` at a dotted path to a zero-argument callable or class
-    implementing strategies.regime.RegimeClassifier (observe + classify).
+    implementing strategies.regime_policy.RegimeClassifier (observe + classify).
 
     With the policy enabled and no classifier configured, this raises rather
     than defaulting: an absent classifier would mean every symbol reads WARMUP,
@@ -137,7 +137,7 @@ def build_regime_classifier(regime_cfg):
         if not callable(getattr(instance, method, None)):
             raise ValueError(
                 f"regime.classifier {path!r} has no {method}(); it must "
-                f"implement strategies.regime.RegimeClassifier")
+                f"implement strategies.regime_policy.RegimeClassifier")
     log(f"regime: classifier {path}")
     return instance
 

@@ -47,6 +47,8 @@ AI assistant).
   `announcement`) with `Last-Event-ID` replay; there is **no candles endpoint** —
   accumulate price history from the feed.
 - Orders are **limit-only**, long-only; `side` is lowercase.
+- The bot now has a tested, price-only regime classifier using ATR-like volatility
+  and directional efficiency. Strategy routing from that classifier is still open.
 - Everything user-facing is **SGT**. Resolve instruments via `GET /instruments` — never
   hardcode names.
 
