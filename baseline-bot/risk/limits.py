@@ -19,6 +19,10 @@ Group caps are denominated in **notional cents**, not shares. A share count
 cannot express joint exposure across instruments at different prices: 500 shares
 of a $300 name is five times the money of 500 shares of a $60 name. Notional is
 what "doubled a position" actually means.
+
+This class is also the protocol the instrument risk model (risk/model.py)
+implements and wraps: `adjust_intent` and `on_portfolio` are no-ops here and
+become behaviour-based sizing and equity marking there.
 """
 
 
@@ -26,7 +30,8 @@ class RiskLimits:
     def __init__(self, max_position_primary: int, max_position_secondary: int,
                  primary_symbol: str, secondary_symbol: str,
                  extra_limits: dict | None = None,
-                 correlated_groups: dict | None = None):
+                 correlated_groups: dict | None = None,
+                 max_position_default: int = 0):
         self._max = {
             primary_symbol: int(max_position_primary),
             secondary_symbol: int(max_position_secondary),
@@ -34,6 +39,10 @@ class RiskLimits:
         if extra_limits:
             for sym, cap in extra_limits.items():
                 self._max[sym] = int(cap)
+        # Cap for any discovered instrument without an explicit entry (the DCA
+        # overlay buys every instrument). Zero keeps the old behaviour: no buys
+        # outside the configured symbols.
+        self._default = int(max_position_default)
 
         # name -> {"symbols": [...], "max_notional_cents": int}
         self._groups = {}
@@ -63,7 +72,12 @@ class RiskLimits:
     # --- per instrument ---------------------------------------------------
 
     def max_position(self, symbol: str) -> int:
-        return self._max.get(symbol, 0)
+        return self._max.get(symbol, self._default)
+
+    def snapshot(self, symbols) -> dict:
+        """Risk parameters for GET /status, so the dashboard's Risk view can show
+        the cap each discovered instrument is held to."""
+        return {"max_position": {s: self.max_position(s) for s in symbols}}
 
     def allows_buy(self, symbol: str, projected_position: int, quantity: int) -> bool:
         """True if buying `quantity` keeps the projected long within the cap.
@@ -119,3 +133,14 @@ class RiskLimits:
         if added_notional <= 0:
             return False
         return projected_notional + added_notional <= cap
+
+    # --- sizing hooks (the risk model overrides these; see risk/model.py) ---
+
+    def adjust_intent(self, symbol: str, side: str, quantity: int, price: int,
+                      projected_position: int, source=None):
+        """(quantity, reason): the plain limits never resize an intent."""
+        return quantity, None
+
+    def on_portfolio(self, portfolio) -> None:
+        """Called by OrderManager on every portfolio refresh. No-op here."""
+        return None

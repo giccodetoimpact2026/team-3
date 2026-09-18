@@ -23,7 +23,10 @@ may touch this concurrently.
 """
 import threading
 import time
+import uuid
+from collections import deque
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import requests
 
@@ -74,15 +77,34 @@ class OrderManager:
     # tier's 10-calls-per-second budget allows us to read.
     POLL_TTL = 1.0
 
+    # Order-rate anomaly throttle (BUG-003, the "March incident"): more
+    # submits than this inside one minute is a logic fault, not a market view.
+    # The bot pauses itself for `anomaly_pause_seconds` and says so.
+    JOURNAL_SIZE = 500
+
     def __init__(self, client, risk, session_id=None, max_active_per_symbol=1,
-                 order_limiter=None, shared_limiter=None, clock=time.monotonic):
+                 order_limiter=None, shared_limiter=None, clock=time.monotonic,
+                 anomaly_limiter=None, anomaly_pause_seconds=60.0,
+                 wall_clock=None):
         self._client = client
         self._risk = risk
         self._lock = threading.RLock()
         self._clock = clock
+        self._wall_clock = wall_clock or (lambda: datetime.now(timezone.utc))
         self._max_active = int(max_active_per_symbol)
         self._order_limiter = order_limiter
         self._shared_limiter = shared_limiter
+        self._anomaly_limiter = anomaly_limiter
+        self._anomaly_pause = float(anomaly_pause_seconds)
+        self._paused_until = 0.0
+        self._pause_reason = None
+        # Every order transition this process knows about, oldest first, with
+        # a monotonically increasing `seq` so a consumer can ask for "since N".
+        # This is the bot -> dashboard channel for order events: the public
+        # SSE `trade` event carries no order id, and GET /orders never shows
+        # a REJECTED submit or an UNKNOWN one under reconciliation.
+        self._journal = deque(maxlen=self.JOURNAL_SIZE)
+        self._journal_seq = 0
 
         self._active: dict[str, ActiveOrder] = {}
         self._unknown: dict[str, UnknownIntent] = {}
@@ -105,6 +127,7 @@ class OrderManager:
         self._session_id = session_id
         self._blocked = False
         self._seq = 0
+        self._run = uuid.uuid4().hex[:8]
         # Set from GET /portfolio, which names its window — P3 can watch this
         # for a boundary without polling /session.
         self.last_seen_session_id = None
@@ -157,6 +180,8 @@ class OrderManager:
             self._positions_at = None
             self._polled_at = None
             self._seq = 0
+            self._paused_until = 0.0
+            self._pause_reason = None
             self._session_id = session_id
         self.refresh_positions(force=True)
 
@@ -174,12 +199,23 @@ class OrderManager:
         for order_id in self._enumerate_live():
             result = self._client.cancel_order(order_id)
             self._observe_shared(result)
+            with self._lock:
+                tracked = self._active.get(order_id)
+            sym, side, qty, px, key = ((tracked.symbol, tracked.side, tracked.quantity,
+                                        tracked.price, tracked.idempotency_key)
+                                       if tracked else (None, None, None, None, None))
             if result.outcome is CancelOutcome.CANCELLED:
                 cancelled.append(order_id)
+                self._journal_put("cancel", "CANCELLED", sym, side, qty, px,
+                                  order_id=order_id, key=key, remaining=0)
             elif result.settled:
+                self._journal_put("cancel", "SETTLED", sym, side, qty, px,
+                                  order_id=order_id, key=key, code=result.code)
                 log(f"orders: {order_id} already settled ({result.code})")
             else:
                 unresolved.append(order_id)
+                self._journal_put("cancel", "UNKNOWN", sym, side, qty, px,
+                                  order_id=order_id, key=key, code=result.code)
                 log(f"orders: cancel of {order_id} unresolved ({result.code})")
             if result.settled:
                 with self._lock:
@@ -201,6 +237,68 @@ class OrderManager:
         with self._lock:
             ids.extend(oid for oid in self._active if oid not in ids)
         return ids
+
+    # --- journal and status (bot -> dashboard channel) --------------------
+
+    def _journal_put(self, kind, status, symbol, side, quantity, price,
+                     order_id=None, key=None, remaining=None, filled=None,
+                     code=None) -> None:
+        with self._lock:
+            self._journal_seq += 1
+            self._journal.append({
+                "seq": self._journal_seq,
+                "at": self._wall_clock().isoformat(timespec="milliseconds")
+                        .replace("+00:00", "Z"),
+                "kind": kind,            # submit | fill | cancel | reconcile | sync
+                "status": status,        # exchange status code, or REJECTED / UNKNOWN
+                "order_id": order_id,
+                "idempotency_key": key,
+                "symbol": symbol,
+                "side": side,
+                "quantity": quantity,
+                "price": price,
+                "remaining": remaining,
+                "filled": filled,
+                "code": code,
+                "session_id": self._session_id,
+            })
+
+    def events_since(self, seq: int = 0) -> list:
+        """Journal entries with seq > `seq`, oldest first."""
+        with self._lock:
+            return [dict(e) for e in self._journal if e["seq"] > int(seq)]
+
+    def journal_page(self, seq: int = 0) -> dict:
+        """What GET /orders?since=seq answers. `seq` in the reply is the current
+        counter, so a consumer whose cursor is ahead of it (a stale cursor from a
+        previous bot process) knows to reset to 0."""
+        with self._lock:
+            return {"seq": self._journal_seq, "events": self.events_since(seq)}
+
+    @property
+    def journal_seq(self) -> int:
+        with self._lock:
+            return self._journal_seq
+
+    def paused(self) -> bool:
+        with self._lock:
+            return self._clock() < self._paused_until
+
+    def status(self) -> dict:
+        """Snapshot for GET /status: what is resting, unknown, and blocked."""
+        with self._lock:
+            paused = self._clock() < self._paused_until
+            return {
+                "active_orders": len(self._active),
+                "active_symbols": sorted({o.symbol for o in self._active.values()}),
+                "unknown_orders": len(self._unknown),
+                "blocked": self._blocked,
+                "paused": paused,
+                "pause_reason": self._pause_reason if paused else None,
+                "pause_remaining_s": (round(self._paused_until - self._clock(), 1)
+                                      if paused else 0),
+                "journal_seq": self._journal_seq,
+            }
 
     # --- exposure --------------------------------------------------------
 
@@ -319,6 +417,12 @@ class OrderManager:
             self._reserved_cash = int((portfolio or {}).get("reserved_cash") or 0)
             self._positions_at = self._clock()
             self.last_seen_session_id = (portfolio or {}).get("session_id")
+        # The risk policy marks equity, cost basis and per-symbol P&L off the
+        # same read, so the model never spends a shared-tier slot of its own.
+        try:
+            self._risk.on_portfolio(portfolio)
+        except Exception as exc:  # a risk bookkeeping fault must not stop trading
+            log(f"orders: risk policy rejected the portfolio snapshot ({exc})")
 
     def poll(self, force: bool = False) -> None:
         """One pass of order-state maintenance. Safe to call on every tick.
@@ -356,8 +460,16 @@ class OrderManager:
                 if latest is None:
                     continue
                 status = latest.get("status")
+                remaining = int(latest.get("remaining_qty") or 0)
+                changed = (status and status != tracked.status) or remaining != tracked.remaining
                 tracked.status = status or tracked.status
-                tracked.remaining = int(latest.get("remaining_qty") or 0)
+                tracked.remaining = remaining
+                if changed:
+                    self._journal_put(
+                        "sync", tracked.status, tracked.symbol, tracked.side,
+                        tracked.quantity, tracked.price, order_id=order_id,
+                        key=tracked.idempotency_key, remaining=remaining,
+                        filled=tracked.quantity - remaining)
                 if status not in LIVE_STATUSES:
                     # Terminal. The position change shows up in the next
                     # portfolio read, so don't double-count it here.
@@ -384,12 +496,20 @@ class OrderManager:
                 if match is not None:
                     self._unknown.pop(key, None)
                     self._adopt(match, intent)
+                    self._journal_put(
+                        "reconcile", match.get("status") or "OPEN", intent.symbol,
+                        intent.side, intent.quantity, intent.price,
+                        order_id=match.get("id"), key=key,
+                        remaining=int(match.get("remaining_qty") or 0), code="LANDED")
                     log(f"{intent.symbol}: unknown order {key} landed as "
                         f"{match.get('id')} ({match.get('status')})")
                     continue
                 intent.absent_reads += 1
                 if intent.absent_reads >= self.RECONCILE_ABSENT_READS:
                     self._unknown.pop(key, None)
+                    self._journal_put(
+                        "reconcile", "NOT_LANDED", intent.symbol, intent.side,
+                        intent.quantity, intent.price, key=key, code="NOT_LANDED")
                     log(f"{intent.symbol}: unknown order {key} never landed; "
                         f"symbol unblocked")
 
@@ -417,14 +537,18 @@ class OrderManager:
     # --- writes ----------------------------------------------------------
 
     def submit_intent(self, symbol: str, side: str, quantity: int,
-                      price: int) -> SubmitResult | None:
+                      price: int, source=None) -> SubmitResult | None:
         """Gate an intent and submit it. None means refused locally, nothing sent.
 
         Gates run cheapest-and-most-blocking first so a refused intent never
-        spends a rate-limit slot or a portfolio read.
+        spends a rate-limit slot or a portfolio read. `source` names the
+        strategy type (momentum, mean_reversion, dca) for the risk policy's
+        regime factors; the policy may shrink a buy or refuse it outright.
         """
         with self._lock:
             if self._blocked:
+                return None
+            if self._clock() < self._paused_until:
                 return None
             if quantity <= 0 or price <= 0:
                 # The exchange would answer 400 and still charge us a slot.
@@ -445,6 +569,10 @@ class OrderManager:
                 return None
             if len(self._active_ids(symbol)) >= self._max_active:
                 return None
+            quantity, _reason = self._risk.adjust_intent(
+                symbol, side, quantity, price, self.projected_position(symbol), source)
+            if quantity <= 0:
+                return None
             if side == "buy":
                 if not self._risk.allows_buy(symbol, self.projected_position(symbol),
                                              quantity):
@@ -462,6 +590,14 @@ class OrderManager:
             if self._order_limiter and not self._order_limiter.acquire():
                 log(f"{symbol}: intent deferred, order rate window spent")
                 return None
+            if self._anomaly_limiter and not self._anomaly_limiter.acquire():
+                self._paused_until = self._clock() + self._anomaly_pause
+                self._pause_reason = (f"order-rate anomaly: more than "
+                                      f"{self._anomaly_limiter.limit} submits in "
+                                      f"{self._anomaly_limiter.window:.0f}s")
+                log(f"orders: {self._pause_reason}; new intents paused for "
+                    f"{self._anomaly_pause:.0f}s")
+                return None
 
             key = self._next_key(symbol, side)
             # Recorded *before* the request so a crash between send and
@@ -469,6 +605,61 @@ class OrderManager:
             self._unknown[key] = UnknownIntent(key, symbol, side, quantity, price,
                                                self._clock())
 
+        return self._send(symbol, side, quantity, price, key)
+
+    def flatten(self, symbol: str, pricer) -> SubmitResult | None:
+        """Crash-guard exit: cancel our resting orders on `symbol`, then sell
+        every share we hold in one order priced by `pricer(quantity)`.
+
+        Bypasses the one-active-order cap (that cap exists to stop signal
+        stacking, and this is a deliberate single exit) but not the halt block,
+        the anomaly pause, or long-only sizing. Returns None if nothing was sent.
+        """
+        with self._lock:
+            if self._blocked or self._clock() < self._paused_until:
+                return None
+            if self._symbol_unresolved(symbol):
+                log(f"{symbol}: flatten refused, unreconciled order outstanding")
+                return None
+            to_cancel = self._active_ids(symbol)
+
+        for order_id in to_cancel:
+            result = self._client.cancel_order(order_id)
+            self._observe_shared(result)
+            if not result.settled:
+                log(f"{symbol}: flatten aborted, cancel of {order_id} unresolved "
+                    f"({result.code})")
+                return None
+            with self._lock:
+                tracked = self._active.pop(order_id, None)
+            if tracked:
+                self._journal_put("cancel", "CANCELLED", tracked.symbol, tracked.side,
+                                  tracked.quantity, tracked.price, order_id=order_id,
+                                  key=tracked.idempotency_key, remaining=0)
+
+        self.refresh_positions(force=True)
+
+        with self._lock:
+            if self._blocked or self._symbol_unresolved(symbol):
+                return None
+            quantity = self.available_to_sell(symbol)
+            if quantity <= 0:
+                log(f"{symbol}: flatten has nothing to sell")
+                return None
+            price = int(pricer(quantity))
+            if price <= 0:
+                log(f"{symbol}: flatten refused, non-positive price {price}")
+                return None
+            if self._order_limiter and not self._order_limiter.acquire():
+                log(f"{symbol}: flatten deferred, order rate window spent")
+                return None
+            key = self._next_key(symbol, "sell")
+            self._unknown[key] = UnknownIntent(key, symbol, "sell", quantity, price,
+                                               self._clock())
+        log(f"{symbol}: flatten sell {quantity}@{price}")
+        return self._send(symbol, "sell", quantity, price, key)
+
+    def _send(self, symbol, side, quantity, price, key) -> SubmitResult:
         result = self._client.submit_limit_order(symbol, side, quantity, price, key)
         self._observe_orders(result)
 
@@ -481,11 +672,15 @@ class OrderManager:
                 # created, so the key is spent and the next intent may use a
                 # fresh one without risking a duplicate.
                 self._unknown.pop(key, None)
+                self._journal_put("submit", "REJECTED", symbol, side, quantity, price,
+                                  key=key, code=result.code)
                 log(f"{symbol} {side} {quantity}@{price} not placed: "
                     f"{result.outcome.value} {result.code}")
             else:
                 # UNKNOWN. Keep the key and the symbol blocked until poll()
                 # resolves it against GET /orders.
+                self._journal_put("submit", "UNKNOWN", symbol, side, quantity, price,
+                                  key=key, code=result.code)
                 log(f"{symbol} {side} {quantity}@{price} UNKNOWN ({result.code}); "
                     f"holding key {key} for reconciliation")
         return result
@@ -498,6 +693,9 @@ class OrderManager:
                 order_id=result.order_id, symbol=symbol, side=side, quantity=quantity,
                 price=price, remaining=result.remaining_qty,
                 idempotency_key=key, status=result.status or "OPEN")
+        self._journal_put("submit", result.status or "OPEN", symbol, side, quantity,
+                          price, order_id=result.order_id, key=key,
+                          remaining=result.remaining_qty, filled=result.filled_qty)
         log(f"{symbol} {side} {quantity}@{price} ACKNOWLEDGED "
             f"id={result.order_id} status={result.status} filled={result.filled_qty}")
 
@@ -547,7 +745,9 @@ class OrderManager:
         and then only to look itself up.
         """
         self._seq += 1
-        return f"{self._session_id or 'nosession'}:{symbol}:{side}:{self._seq}"
+        # `_run` is a per-process nonce: a restart inside the same window would
+        # otherwise reissue key #1 and be refused with ORDER_DUPLICATE.
+        return f"{self._session_id or 'nosession'}:{self._run}:{symbol}:{side}:{self._seq}"
 
     # --- rate-limit bookkeeping ------------------------------------------
 

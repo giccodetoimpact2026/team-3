@@ -120,10 +120,11 @@ def test_group_cap_cannot_block_the_sell_that_unwinds_a_breach(config):
     client.get_orders.return_value = []
     client.get_portfolio.return_value = {
         "session_id": "w1", "cash": 10**9, "reserved_cash": 0,
+        # Large enough to breach the configured group cap at these marks.
         "positions": [
-            {"symbol": "NOVA", "quantity": 500, "reserved_qty": 0,
+            {"symbol": "NOVA", "quantity": 5_000, "reserved_qty": 0,
              "avg_cost": 20_000, "last_price": 20_000},
-            {"symbol": "AXON", "quantity": 500, "reserved_qty": 0,
+            {"symbol": "AXON", "quantity": 5_000, "reserved_qty": 0,
              "avg_cost": 20_000, "last_price": 20_000}]}
     client.submit_limit_order.side_effect = lambda s, side, q, p, k: SubmitResult(
         Outcome.ACKNOWLEDGED, k, order_id=k, status="OPEN", remaining_qty=q)

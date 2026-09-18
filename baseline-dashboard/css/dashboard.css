@@ -12,6 +12,8 @@
   --neg: #c62b3b;
   --online: #0a8f4f;
   --offline: #c62b3b;
+  --chart-fg: #6b7488;
+  --chart-grid: rgba(27, 35, 51, 0.10);
 }
 
 /*
@@ -164,6 +166,11 @@ tbody tr:last-child td {
 .badge.bot.quiescing { background: #fef3c7; color: #92400e; }
 .badge.bot.stopped { background: #fee2e2; color: #991b1b; }
 .badge.bot.offline { background: #e5e7eb; color: #6b7280; }
+.badge.bot.degraded { background: #fef3c7; color: #92400e; }
+.badge.bot.dead { background: #b91c1c; color: #fff; animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.55; } }
+.order-status.unknown { background: #fef3c7; color: #92400e; }
+td.src { color: var(--muted); font-size: 11px; }
 .btn.danger { background: #b91c1c; font-weight: 700; letter-spacing: 0.06em; margin-right: 12px; }
 .btn.danger:hover:not(:disabled) { background: #991b1b; }
 .btn.danger:disabled { background: #e5e7eb; color: #9ca3af; }
@@ -232,6 +239,83 @@ td.empty { color: #9aa3b2; text-align: center; font-style: italic; }
 .tabs a.active { background: var(--accent); color: #fff; }
 .tabs a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* --- Tab bar (below the global frame) + tab panels ---------------------- */
+nav.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+nav.tabs a.external { margin-left: auto; color: var(--accent); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+.tab-panel > section { margin-top: 24px; }
+.tab-panel > section:first-child { margin-top: 0; }
+
+/* --- Scaffold notes (features waiting on a bot endpoint) ----------------- */
+.scaffold-note {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-left: 3px solid #f59e0b;
+  color: #7c2d12;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.scaffold-note.info { background: rgba(16, 52, 166, 0.06); border-color: var(--border); border-left-color: var(--accent); color: var(--text); }
+.scaffold-note code { background: rgba(0, 0, 0, 0.06); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+/* --- Overview: portfolio heat map --------------------------------------- */
+.heatmap { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+.heat-cell { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.heat-sym { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.heat-val { margin-top: 4px; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.heat-cell.pos .heat-val { color: var(--pos); }
+.heat-cell.neg .heat-val { color: var(--neg); }
+
+/* --- Execution: chart --------------------------------------------------- */
+.chart-controls { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.chart-controls select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.seg-btn { background: var(--surface); color: var(--muted); border: 0; border-radius: 0; padding: 4px 10px; }
+.seg-btn.active { background: var(--accent); color: #fff; }
+.legend { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 5px; }
+.swatch { width: 14px; height: 3px; display: inline-block; border-radius: 2px; }
+.swatch.vwap { background: var(--accent); }
+#price-chart { display: block; width: 100%; height: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+
+/* --- Risk: exposure/drawdown tiles + correlation matrix ----------------- */
+.risk-tiles, .summary-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.corr-table { table-layout: fixed; }
+.corr-cell { text-align: center; font-variant-numeric: tabular-nums; font-size: 13px; }
+.corr-cell.na { color: var(--muted); }
+.corr-table th { text-align: center; }
+.corr-matrix .empty { color: var(--muted); font-style: italic; padding: 12px; }
+
+/* --- Strategy params: two-step confirm ---------------------------------- */
+.param-confirm { margin-top: 14px; padding: 10px 14px; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--border); }
+.btn.ghost:disabled { color: var(--muted); border-color: var(--border); cursor: not-allowed; }
+
+/* --- Assistant shell ---------------------------------------------------- */
+.assistant-input { display: flex; gap: 8px; margin-bottom: 10px; }
+.assistant-input input { flex: 1; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font: inherit; }
+.assistant-answer { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; color: var(--muted); font-size: 14px; }
+
+/* --- Overview: bot bid/ask order trail ---------------------------------- */
+.order-side { display: inline-block; font-size: 11px; letter-spacing: 0.04em; padding: 2px 6px; border-radius: 4px; font-weight: 700; }
+.order-side.bid { background: #dcfce7; color: #166534; }
+.order-side.ask { background: #fee2e2; color: #991b1b; }
+
+@media (max-width: 720px) {
+  .risk-tiles, .summary-tiles { grid-template-columns: repeat(2, 1fr); }
+  .cards { grid-template-columns: 1fr; }
+}
+
 /* --- Parameter-sweep backtest ------------------------------------------- */
 .backtest { margin-top: 24px; }
 .backtest-intro {
@@ -289,3 +373,8 @@ tr.row-winner td { background: rgba(10, 143, 79, 0.10); }
 tr.row-current td { background: rgba(16, 52, 166, 0.06); }
 tr.row-current td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 tr.row-winner.row-current td { background: rgba(10, 143, 79, 0.10); }
+
+/* Bot guards (crash guard + DCA) */
+.guards { margin-bottom: 24px; }
+.guards .guard-dumped { color: #dc2626; font-weight: 600; }
+.guards .guard-breach { color: #d97706; font-weight: 600; }

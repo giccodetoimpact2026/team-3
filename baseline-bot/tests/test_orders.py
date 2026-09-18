@@ -9,7 +9,7 @@ import requests
 
 from exchange.client import ExchangeClient
 from exchange.ratelimit import RollingWindow
-from exchange.results import CancelOutcome, Outcome, SubmitResult
+from exchange.results import CancelOutcome, CancelResult, Outcome, SubmitResult
 from orders.manager import OrderManager
 from risk.limits import RiskLimits
 
@@ -351,3 +351,223 @@ def test_cancel_result_settles_on_not_cancellable():
         400, {"status": "error", "error": {"code": "ORDER_NOT_CANCELLABLE"}}))
     result = c.cancel_order("o1")
     assert result.outcome is CancelOutcome.NOT_CANCELLABLE and result.settled
+
+
+# --- journal (bot -> dashboard order events) and burst throttle ------------
+
+def test_journal_records_ack_rejection_and_terminal_sync(manager, client, clock):
+    manager.submit_intent("NOVA", "buy", 100, 4250)
+    client.submit_limit_order.return_value = SubmitResult(
+        Outcome.REJECTED, "k2", code="PRICE_OUT_OF_BAND")
+    manager.submit_intent("ELXR", "buy", 50, 9000)
+    client.get_orders.return_value = [
+        {"id": "o1", "status": "FILLED", "remaining_qty": 0, "idempotency_key": "k"}]
+    clock.advance(2)
+    manager.poll()
+
+    events = manager.events_since(0)
+    assert [(e["kind"], e["status"], e["symbol"]) for e in events] == [
+        ("submit", "OPEN", "NOVA"),
+        ("submit", "REJECTED", "ELXR"),
+        ("sync", "FILLED", "NOVA"),
+    ]
+    assert events[1]["code"] == "PRICE_OUT_OF_BAND"
+    assert events[2]["filled"] == 100
+    assert [e["seq"] for e in events] == [1, 2, 3]
+    assert manager.events_since(2)[0]["seq"] == 3
+    assert manager.journal_page(3) == {"seq": 3, "events": []}
+
+
+def test_journal_records_unknown_then_reconciled(manager, client, clock):
+    client.submit_limit_order.return_value = SubmitResult(
+        Outcome.UNKNOWN, "k", code="GATEWAY_TIMEOUT")
+    manager.submit_intent("NOVA", "buy", 100, 4250)
+    key = manager.events_since(0)[0]["idempotency_key"]
+    client.get_orders.return_value = [
+        {"id": "o7", "status": "OPEN", "remaining_qty": 100, "idempotency_key": key}]
+    clock.advance(3)
+    manager.poll()
+    kinds = [(e["kind"], e["status"], e["code"]) for e in manager.events_since(0)]
+    assert kinds == [("submit", "UNKNOWN", "GATEWAY_TIMEOUT"),
+                     ("reconcile", "OPEN", "LANDED")]
+
+
+def test_journal_records_cancels(manager, client):
+    manager.submit_intent("NOVA", "buy", 100, 4250)
+    client.get_orders.return_value = [{"id": "o1", "status": "OPEN"}]
+    client.cancel_order.return_value = CancelResult(CancelOutcome.CANCELLED, "o1")
+    manager.cancel_all()
+    last = manager.events_since(0)[-1]
+    assert (last["kind"], last["status"], last["order_id"], last["symbol"]) == (
+        "cancel", "CANCELLED", "o1", "NOVA")
+
+
+def test_burst_of_submits_pauses_the_bot(client, clock):
+    risk = RiskLimits(5000, 200, "NOVA", "ELXR")
+    m = OrderManager(client, risk, session_id="w1", clock=clock,
+                     max_active_per_symbol=100,
+                     anomaly_limiter=RollingWindow(3, 60.0, clock=clock),
+                     anomaly_pause_seconds=60)
+    n = 0
+    for i in range(6):
+        client.submit_limit_order.return_value = SubmitResult(
+            Outcome.ACKNOWLEDGED, "k", order_id=f"o{i}", status="OPEN", remaining_qty=10)
+        if m.submit_intent("NOVA", "buy", 10, 4250) is not None:
+            n += 1
+    assert n == 3
+    assert m.paused()
+    assert m.status()["paused"] is True
+    assert "anomaly" in m.status()["pause_reason"]
+    assert client.submit_limit_order.call_count == 3
+
+    clock.advance(61)
+    assert not m.paused()
+    m.submit_intent("NOVA", "buy", 10, 4250)
+    assert client.submit_limit_order.call_count == 4
+
+
+def test_status_snapshot(manager, client):
+    manager.submit_intent("NOVA", "buy", 100, 4250)
+    s = manager.status()
+    assert s["active_orders"] == 1
+    assert s["active_symbols"] == ["NOVA"]
+    assert s["unknown_orders"] == 0
+    assert s["blocked"] is False
+    assert s["paused"] is False
+    assert s["journal_seq"] == 1
+
+
+# --- crash guard: flatten() ------------------------------------------------
+
+def _hold(client, symbol, qty, reserved=0):
+    client.get_portfolio.return_value = {
+        "session_id": "w1", "cash": 1_000_000_000, "reserved_cash": 0,
+        "positions": [{"symbol": symbol, "quantity": qty, "reserved_qty": reserved}]}
+
+
+def test_flatten_cancels_that_symbols_orders_then_sells_everything_held(manager, client):
+    _hold(client, "NOVA", 1000)
+    manager.submit_intent("NOVA", "sell", 100, 4250)         # o1 rests
+    client.cancel_order.return_value = CancelResult(CancelOutcome.CANCELLED, "o1")
+    client.submit_limit_order.return_value = SubmitResult(
+        Outcome.ACKNOWLEDGED, "k", order_id="d1", status="FILLED",
+        remaining_qty=0, filled_qty=1000)
+
+    result = manager.flatten("NOVA", lambda qty: 4000)
+
+    client.cancel_order.assert_called_once_with("o1")
+    sym, side, qty, price, _key = client.submit_limit_order.call_args.args
+    assert (sym, side, qty, price) == ("NOVA", "sell", 1000, 4000)
+    assert result.filled_qty == 1000
+    assert manager.projected_position("NOVA") == 0
+
+
+def test_flatten_passes_the_sellable_quantity_to_the_pricer(manager, client):
+    _hold(client, "NOVA", 750)
+    seen = []
+    manager.flatten("NOVA", lambda qty: seen.append(qty) or 4000)
+    assert seen == [750]
+
+
+def test_flatten_ignores_the_one_active_order_cap(manager, client):
+    _hold(client, "NOVA", 1000)
+    manager.submit_intent("NOVA", "sell", 100, 4250)          # o1 rests
+    client.cancel_order.return_value = CancelResult(CancelOutcome.CANCELLED, "o1")
+    manager.flatten("NOVA", lambda qty: 4000)
+    assert client.submit_limit_order.call_count == 2
+
+
+def test_flatten_does_not_touch_other_symbols_orders(manager, client):
+    _hold(client, "NOVA", 1000)
+    client.submit_limit_order.return_value = SubmitResult(
+        Outcome.ACKNOWLEDGED, "k", order_id="e1", status="OPEN", remaining_qty=50)
+    manager.submit_intent("ELXR", "buy", 50, 4250)
+    client.submit_limit_order.return_value = SubmitResult(
+        Outcome.ACKNOWLEDGED, "k", order_id="d1", status="FILLED", filled_qty=1000)
+    manager.flatten("NOVA", lambda qty: 4000)
+    assert not client.cancel_order.called
+
+
+def test_flatten_sends_nothing_when_nothing_is_held(manager, client):
+    _hold(client, "NOVA", 0)
+    assert manager.flatten("NOVA", lambda qty: 4000) is None
+    assert not client.submit_limit_order.called
+
+
+def test_flatten_respects_the_halt_block(manager, client):
+    _hold(client, "NOVA", 1000)
+    manager.block_new_intents()
+    assert manager.flatten("NOVA", lambda qty: 4000) is None
+    assert not client.submit_limit_order.called
+
+
+def test_flatten_leaves_an_unresolved_cancel_alone(manager, client):
+    _hold(client, "NOVA", 1000)
+    manager.submit_intent("NOVA", "sell", 100, 4250)
+    client.cancel_order.return_value = CancelResult(CancelOutcome.UNKNOWN, "o1")
+    assert manager.flatten("NOVA", lambda qty: 4000) is None
+    assert client.submit_limit_order.call_count == 1   # only the original sell
+
+
+def test_keys_differ_across_bot_restarts_in_the_same_session(client, clock):
+    risk = RiskLimits(500, 200, "NOVA", "ELXR")
+    first = OrderManager(client, risk, session_id="w1", clock=clock)
+    second = OrderManager(client, risk, session_id="w1", clock=clock)
+    assert first._next_key("NOVA", "buy") != second._next_key("NOVA", "buy")
+
+
+# --- risk policy hooks: sizing and portfolio observation ---------------------
+
+class SizingPolicy(RiskLimits):
+    """A RiskLimits that also sizes: what the risk model plugs in as."""
+
+    def __init__(self, adjusted, reason=None):
+        super().__init__(10_000, 10_000, "NOVA", "ELXR")
+        self.adjusted, self.reason = adjusted, reason
+        self.seen, self.portfolios = [], []
+
+    def adjust_intent(self, symbol, side, quantity, price, projected_position, source=None):
+        self.seen.append((symbol, side, quantity, price, projected_position, source))
+        return self.adjusted, self.reason
+
+    def on_portfolio(self, portfolio):
+        self.portfolios.append(portfolio)
+
+
+def test_risk_limits_passes_intents_through_unchanged():
+    risk = RiskLimits(500, 200, "NOVA", "ELXR")
+    assert risk.adjust_intent("NOVA", "buy", 100, 4250, 0) == (100, None)
+    risk.on_portfolio({"positions": []})      # no-op, must not raise
+
+
+def test_intent_quantity_is_adjusted_by_the_risk_policy(client, clock):
+    policy = SizingPolicy(50, "vol_cap=50")
+    manager = OrderManager(client, policy, session_id="w1", clock=clock)
+    manager.submit_intent("NOVA", "buy", 100, 4250, source="momentum")
+    sym, side, qty, price, _key = client.submit_limit_order.call_args.args
+    assert (sym, side, qty, price) == ("NOVA", "buy", 50, 4250)
+    assert policy.seen == [("NOVA", "buy", 100, 4250, 0, "momentum")]
+
+
+def test_intent_refused_by_the_risk_policy_is_not_sent(client, clock):
+    policy = SizingPolicy(0, "drawdown limit: buys blocked")
+    manager = OrderManager(client, policy, session_id="w1", clock=clock)
+    assert manager.submit_intent("NOVA", "buy", 100, 4250) is None
+    client.submit_limit_order.assert_not_called()
+    assert not manager.has_active("NOVA")
+
+
+def test_portfolio_refresh_feeds_the_risk_policy(client, clock):
+    policy = SizingPolicy(100)
+    manager = OrderManager(client, policy, session_id="w1", clock=clock)
+    manager.refresh_positions(force=True)
+    assert policy.portfolios == [client.get_portfolio.return_value]
+
+
+def test_flatten_is_not_resized_by_the_policy(client, clock):
+    policy = SizingPolicy(0, "drawdown limit: buys blocked")
+    manager = OrderManager(client, policy, session_id="w1", clock=clock)
+    _hold(client, "NOVA", 1000)
+    client.submit_limit_order.return_value = SubmitResult(
+        Outcome.ACKNOWLEDGED, "k", order_id="d1", status="FILLED", filled_qty=1000)
+    assert manager.flatten("NOVA", lambda qty: 4000) is not None

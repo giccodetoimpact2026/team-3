@@ -228,7 +228,12 @@ def wired(config, sellable, avg_cost):
     orders.available_to_sell.return_value = sellable
     orders.avg_cost.return_value = avg_cost
     strategies = build_strategies(config)
-    exits = ExitPolicy(config["risk"]["exits"])
+    # The shipped config carries take-profit legs only (the stop-loss is the
+    # risk model's, see risk/model.py). These handler tests are about ordering
+    # — an exit overrides the strategy — so give NOVA an explicit stop leg.
+    levels = {s: dict(v) for s, v in config["risk"]["exits"].items()}
+    levels["NOVA"] = {**levels.get("NOVA", {}), "stop_loss_pct": 0.03}
+    exits = ExitPolicy(levels)
     on_price = make_price_handler(
         strategies, orders, {"session_open": True, "session_id": "w1"},
         {"value": RUNNING}, exits)
@@ -275,10 +280,22 @@ def test_trailing_exit_reaches_the_order_manager(config):
 # =========================================================================
 
 def test_every_active_instrument_has_a_stop(config):
-    """Priya's ask was per-instrument stop-losses, so none may be missing."""
-    exits = ExitPolicy(config["risk"]["exits"])
-    for symbol in build_strategies(config):
-        assert exits.levels(symbol).get("stop_loss_pct"), f"{symbol} has no stop"
+    """Priya's ask was per-instrument stop-losses, so none may be missing.
+
+    The stop is the risk model's: volatility-scaled from cost basis, floored
+    per instrument. The fixed-percentage legs that used to live in
+    `risk.exits` are gone, so there is exactly one stop-loss system.
+    """
+    from risk.profiles import load_profiles
+
+    rm = config["risk_model"]
+    assert rm["enabled"] and rm["stop_loss"]["enabled"]
+    active = list(build_strategies(config))
+    profiles = load_profiles(rm, active)
+    for symbol in active:
+        assert profiles[symbol].min_stop_pct > 0, f"{symbol} has no stop"
+        assert "stop_loss_pct" not in (config["risk"]["exits"].get(symbol) or {}), \
+            f"{symbol} has a second, fixed stop in risk.exits"
 
 
 def test_momentum_names_trail_and_mean_reversion_does_not(config):
@@ -288,9 +305,10 @@ def test_momentum_names_trail_and_mean_reversion_does_not(config):
     for symbol in ("NOVA", "CRVX", "AXON"):
         assert exits.levels(symbol)["trail_pct"] is not None, symbol
         assert exits.levels(symbol)["take_profit_pct"] is None, symbol
-    # ELXR sells when price runs above its mean — that IS its take-profit.
-    assert exits.levels("ELXR")["trail_pct"] is None
-    assert exits.levels("ELXR")["take_profit_pct"] is None
+    # ELXR sells when price runs above its mean — that IS its take-profit, so
+    # it has no exits entry at all.
+    assert exits.levels("ELXR").get("trail_pct") is None
+    assert exits.levels("ELXR").get("take_profit_pct") is None
     assert type(strategies["ELXR"]).__name__ == "MeanReversionStrategy"
     # DRFT spikes then drops, so it takes a fixed target rather than a trail.
     assert exits.levels("DRFT")["take_profit_pct"] is not None

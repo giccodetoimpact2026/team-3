@@ -58,6 +58,22 @@ Root: `.github/workflows/dashboard-ci.yml`.
   exchange with a stub control server: RUNNING → click → HALTED banner → OFFLINE after the
   process exits.
 
+## Heartbeat health and bot order journal — branch `heartbeat-lifecycle`
+
+- Bot: `utils/heartbeat.py` beats every 5 s and is the feed-stall watchdog (restart after
+  20 s without an SSE event). `GET /status` gained `heartbeat_*`, `feed_*`, `worker_alive`
+  and `orders` fields; `GET /orders?since=N` serves the OrderManager journal. `halt()` now
+  goes through `block_new_intents()` + `cancel_all()` and reports unresolved cancels; the
+  session boundary resets order state; a submit burst pauses the bot (BUG-003); config is
+  validated at startup.
+- Dashboard: `botStatusView` is heartbeat-based (`BOT DEAD` after 15 s, `FEED DEGRADED /
+  DEAD`, `BOT PAUSED`, tooltip detail); `LifecycleHistory.record()` ingests journal entries
+  (REJECTED / UNKNOWN / reconciliation rows with codes, `source: "bot"`); the rejected
+  counter includes them; `trade` events skip the orders re-read while nothing is resting.
+- Tests: bot 96 (`tests/test_heartbeat.py`, journal and throttle cases in `test_orders.py`,
+  rewritten `test_lifecycle.py` / `test_control.py`, validation cases in `test_config.py`);
+  dashboard 54.
+
 ## Open
 
-Heartbeat health dot (BUG-010), MCP conversational panel, price chart (BUG-018), dark mode.
+MCP conversational panel, price chart (BUG-018), dark mode.

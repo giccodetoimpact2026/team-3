@@ -4,8 +4,15 @@ A tiny standard-library HTTP server on a daemon thread. It is bound to
 localhost only and carries no authentication: the dashboard dev server
 (baseline-dashboard/server.js) proxies /bot/* to it on the same machine.
 
-    GET  /status  -> {"state": "RUNNING", "session_id": ..., "session_open": bool}
-    POST /halt    -> {"state": "STOPPED", "unresolved": 0}
+    GET  /status            -> {"state": "RUNNING", "session_id": ..., "session_open": bool,
+                                heartbeat_*/feed_* from the Heartbeat, orders: {...},
+                                risk: {...}, crash_guard: {...}, dca: {...}}
+    GET  /orders?since=<n>  -> {"seq": <latest>, "events": [...]}  the OrderManager
+                               journal after seq n: every submit, fill, cancel and
+                               reconciliation this process performed
+    GET  /news/config       -> the news engine's live configuration (when enabled)
+    POST /news/config       -> patch that configuration; answers the new one
+    POST /halt              -> {"state": "STOPPED", "unresolved": 0}
 
 `/halt` runs the same halt() path as SIGINT/SIGTERM: block new intents,
 cancel every open order, stop. Calling it twice is safe; the second call
@@ -19,17 +26,23 @@ from utils.logger import log
 
 
 class ControlServer:
-    """Serve /status, /halt, and /news/config for the given callbacks.
+    """Serve /status, /orders, /halt and /news/config for the given callbacks.
 
     status_fn() -> dict         current lifecycle snapshot
     halt_fn()   -> int | None   run the halt path; returns unresolved count
+    events_fn(since) -> dict    {"seq": latest journal seq, "events": [entries with
+                                seq > since]} (optional). `seq` is the manager's
+                                current counter even when nothing is returned, so a
+                                consumer holding a stale cursor from a previous bot
+                                process resyncs instead of waiting forever.
     news_engine                 optional NewsEngine for live config reads/writes
     """
 
     def __init__(self, status_fn, halt_fn, host="127.0.0.1", port=8092,
-                 news_engine=None):
+                 events_fn=None, news_engine=None):
         self._status_fn = status_fn
         self._halt_fn = halt_fn
+        self._events_fn = events_fn
         self._news_engine = news_engine
         self._halt_lock = threading.Lock()
         self._server = ThreadingHTTPServer((host, port), self._handler_class())
@@ -75,17 +88,29 @@ class ControlServer:
                 self.wfile.write(data)
 
             def do_GET(self):
-                if self.path == "/status":
+                path, _, query = self.path.partition("?")
+                if path == "/status":
                     return self._send(200, outer._status_fn())
-                if self.path == "/news/config" and outer._news_engine:
+                if path == "/orders" and outer._events_fn is not None:
+                    since = 0
+                    for part in query.split("&"):
+                        k, _, v = part.partition("=")
+                        if k == "since":
+                            try:
+                                since = int(v)
+                            except ValueError:
+                                return self._send(400, {"error": "since must be an integer"})
+                    return self._send(200, outer._events_fn(since))
+                if path == "/news/config" and outer._news_engine:
                     return self._send(200, outer._news_engine.get_config())
                 self._send(404, {"error": "not found"})
 
             def do_POST(self):
-                if self.path == "/halt":
+                path, _, _query = self.path.partition("?")
+                if path == "/halt":
                     log("control: halt requested by dashboard")
                     return self._send(200, outer._halt())
-                if self.path == "/news/config" and outer._news_engine:
+                if path == "/news/config" and outer._news_engine:
                     length = int(self.headers.get("Content-Length", 0))
                     body = self.rfile.read(length) if length else b"{}"
                     try:

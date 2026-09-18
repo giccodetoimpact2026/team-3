@@ -242,3 +242,44 @@ test("pnlFromPortfolio: converts cents to dollars in the MCP get_pnl shape and z
   assert.strictEqual(out.as_of, "2026-09-18 09:02:03.456 SGT");
   assert.match(out.source, /portfolio/);
 });
+
+
+// --- bot journal -> lifecycle history ---------------------------------------
+
+test("LifecycleHistory.record: a REJECTED submit (never an exchange order) becomes a row keyed by its idempotency key", () => {
+  const h = new LifecycleHistory("s1", memStorage());
+  assert.strictEqual(h.record([{ seq: 1, at: "2026-09-18T02:00:00.000Z", kind: "submit", status: "REJECTED", order_id: null, idempotency_key: "s1:NOVA:buy:1", symbol: "NOVA", side: "buy", quantity: 100, price: 4250, code: "PRICE_OUT_OF_BAND" }]), true);
+  const [e] = h.entries();
+  assert.strictEqual(e.orderId, "s1:NOVA:buy:1");
+  assert.strictEqual(e.status, "REJECTED");
+  assert.strictEqual(e.source, "bot");
+  assert.strictEqual(e.code, "PRICE_OUT_OF_BAND");
+  assert.strictEqual(e.symbol, "NOVA");
+  assert.deepStrictEqual(counters([], h), { buy: 0, sell: 0, partial: 0, rejected: 1 });
+});
+
+test("LifecycleHistory.record: an acknowledged order later seen on the exchange with the same status is not duplicated", () => {
+  const h = new LifecycleHistory("s1", memStorage());
+  h.record([{ seq: 1, at: "2026-09-18T02:00:00.000Z", kind: "submit", status: "OPEN", order_id: "o1", symbol: "NOVA", side: "buy", quantity: 100, price: 4250, remaining: 100 }]);
+  h.observe([order({ id: "o1", status: "OPEN", updated_at: "2026-09-18T02:00:00.500Z" })]);
+  assert.strictEqual(h.entries().length, 1);
+  h.observe([order({ id: "o1", status: "FILLED", updated_at: "2026-09-18T02:00:03.000Z", remaining_qty: 0 })]);
+  assert.deepStrictEqual(h.entries().map((e) => e.status), ["ACKNOWLEDGED", "FILLED"]);
+});
+
+test("LifecycleHistory.record: UNKNOWN then reconciled, NOT_LANDED maps to REJECTED, SETTLED is skipped", () => {
+  const h = new LifecycleHistory("s1", memStorage());
+  h.record([
+    { seq: 1, at: "2026-09-18T02:00:00.000Z", status: "UNKNOWN", idempotency_key: "k1", symbol: "NOVA", code: "GATEWAY_TIMEOUT" },
+    { seq: 2, at: "2026-09-18T02:00:03.000Z", status: "NOT_LANDED", idempotency_key: "k1", symbol: "NOVA", code: "NOT_LANDED" },
+    { seq: 3, at: "2026-09-18T02:00:04.000Z", kind: "cancel", status: "SETTLED", order_id: "o2", code: "ORDER_NOT_CANCELLABLE" },
+  ]);
+  assert.deepStrictEqual(h.entries().map((e) => [e.orderId, e.status]), [["k1", "UNKNOWN"], ["k1", "REJECTED"]]);
+});
+
+test("LifecycleHistory.record: persists like observe() and reloads", () => {
+  const store = memStorage();
+  new LifecycleHistory("s1", store).record([{ seq: 1, at: "2026-09-18T02:00:00.000Z", status: "OPEN", order_id: "o1" }]);
+  assert.strictEqual(new LifecycleHistory("s1", store).entries().length, 1);
+  assert.strictEqual(new LifecycleHistory("s2", store).entries().length, 0);
+});

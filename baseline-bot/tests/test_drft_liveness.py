@@ -165,7 +165,15 @@ def test_drft_is_the_smallest_book_and_has_the_tightest_controls(config):
     assert quantities["DRFT"] == min(quantities.values())
 
     exits = config["risk"]["exits"]["DRFT"]
-    assert exits["stop_loss_pct"] <= 0.02
     # Fixed target, not a trail: a trail sells into the drop on a thin book.
     assert "take_profit_pct" in exits
     assert "trailing_take_profit" not in exits
+
+    # The stop-loss is the risk model's. Its DRFT profile runs at a fifth of
+    # NOVA's size and a fifth of the visible asks, and never more than 20
+    # shares before the first book arrives.
+    from risk.profiles import load_profiles
+    profiles = load_profiles(config["risk_model"], ["NOVA", "DRFT"])
+    assert profiles["DRFT"].size_multiplier <= 0.2 * profiles["NOVA"].size_multiplier
+    assert profiles["DRFT"].depth_fraction <= 0.2
+    assert profiles["DRFT"].max_qty_without_book <= 20

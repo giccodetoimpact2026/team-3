@@ -76,7 +76,8 @@ def test_resting_order_prevents_stacking(client, config):
 
 
 def test_position_cap(client, config):
-    client.get_positions.return_value = 500
+    # Already at the configured cap, so any buy must be refused.
+    client.get_positions.return_value = config["risk"]["max_position_primary"]
     bot, s = ready_bot(client, config, trade=True)
     bot.evaluate(s)
     client.submit_limit_order.assert_not_called()
