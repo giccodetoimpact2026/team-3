@@ -275,12 +275,27 @@ def test_classifier_observes_every_print(config):
 def test_atr_adapter_maps_trends_and_shocks(config, policy, direction):
     clf = build_regime_classifier(config["regime"])
     assert clf.classify("NOVA") == Regime.WARMUP
-    for index in range(16):
+    # 16 prints is the minimum for the classifier to read TREND, and the
+    # hysteresis debounce then needs `confirm_samples` consecutive TREND
+    # observations before publishing it — so feed enough to confirm.
+    confirmations = clf.confirm_samples
+    for index in range(16 + confirmations):
         clf.observe("NOVA", 10_000 + direction * 100 * index)
     assert clf.classify("NOVA") == Regime.TREND
     assert policy.apply("NOVA", momentum(), buy(), clf).quantity == 100
     assert clf.classify("ELXR") == Regime.WARMUP
-    clf.observe("NOVA", 10_000 + direction * 2500)
+
+    # SHOCK is debounced like any other label: it is NOT in immediate_labels,
+    # because the crash_buy family sizes it at 1.0 and adopting it on one
+    # print would hand that family full size instantly.
+    # Each jump has to be bigger than the last: repeating one price is not a
+    # sustained shock, it is a shock followed by a flat series.
+    base = 10_000 + direction * 100 * (15 + confirmations)
+    clf.observe("NOVA", base + direction * 2500)
+    assert clf.raw("NOVA") == Regime.SHOCK
+    assert clf.classify("NOVA") == Regime.TREND, "one print must not switch"
+    for step in range(2, confirmations + 1):
+        clf.observe("NOVA", base + direction * 2500 * step)
     assert clf.classify("NOVA") == Regime.SHOCK
     assert policy.apply("NOVA", momentum(), buy(), clf) is None
     sell = Signal("sell", 100, 10_000)

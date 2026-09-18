@@ -164,6 +164,26 @@ regime:
   classifier: "strategies.regime_adapter.AtrRegimeClassifier"
   # static_regime: "TREND"       # pin one regime for a demo or a bisect
 
+  # Hysteresis (James p.3: "once you switch regime, require a few samples
+  # before switching back"). A label computed from a rolling window oscillates
+  # whenever the market sits near a threshold, and each oscillation would
+  # resize or cancel entries.
+  #
+  # ASYMMETRIC, deliberately. Delaying a transition that RAISES the size
+  # multiplier is protective; delaying one that LOWERS it would keep us at full
+  # size through the opening ticks of a move. So a label that forbids entries
+  # in EVERY family above is adopted immediately, and everything else waits.
+  #
+  # SHOCK is NOT in that set, though it looks like it should be: `crash_buy`
+  # sizes SHOCK at 1.0 because the shock is its entry, so adopting SHOCK on one
+  # print would hand that family full size instantly. Startup rejects any
+  # immediate label a family sizes above 0.0, so this cannot drift silently.
+  #
+  # confirm_samples: 1 disables the debounce.
+  hysteresis:
+    confirm_samples: 3
+    immediate_labels: ["WARMUP"]
+
   # Omitted (family, regime) pairs fall back to strategies.regime_policy.DEFAULT_POLICY,
   # which is these values. Restated here so the table is visible to the desk.
   policy:

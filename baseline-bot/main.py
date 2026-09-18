@@ -127,6 +127,34 @@ def build_strategies(config):
     return strategies
 
 
+def _check_immediate_labels_are_risk_off(regime_cfg, hysteresis):
+    """A label adopted without confirmation must never be able to raise risk.
+
+    The hysteresis debounce is asymmetric on purpose: risk-reducing
+    transitions skip the confirmation wait. That is only sound for a label
+    that forbids entries in EVERY family — otherwise one print could hand a
+    family full size, which is the flip-flop the debounce exists to prevent.
+
+    SHOCK is the live example. It was risk-off everywhere until the
+    `crash_buy` family arrived, whose entry IS the shock. Rather than trust a
+    comment to stay true, this fails at startup.
+    """
+    labels = hysteresis.get("immediate_labels")
+    if not labels:
+        return
+    policy = RegimePolicy({**regime_cfg, "enabled": True})
+    for label in labels:
+        for family in policy.table():
+            multiplier = policy.multiplier("*", family, label)
+            if multiplier:
+                raise ValueError(
+                    f"regime.hysteresis.immediate_labels includes {label!r}, "
+                    f"but family {family!r} sizes it at {multiplier} — a label "
+                    f"adopted without confirmation must be 0.0 everywhere, or "
+                    f"one print can raise risk. Remove it from "
+                    f"immediate_labels, or set {family}.{label} to 0.0.")
+
+
 def build_regime_classifier(regime_cfg):
     """Resolve the regime classifier named in config.
 
@@ -166,6 +194,22 @@ def build_regime_classifier(regime_cfg):
             raise ValueError(
                 f"regime.classifier {path!r} has no {method}(); it must "
                 f"implement strategies.regime_policy.RegimeClassifier")
+
+    # Hysteresis is the classifier's business — debouncing a label is a
+    # property of the labeller, not of the policy table — so the settings are
+    # handed over if the implementation accepts them. James p.3 asks for it:
+    # "once you switch regime, require a few samples before switching back."
+    hysteresis = regime_cfg.get("hysteresis")
+    if hysteresis is not None:
+        _check_immediate_labels_are_risk_off(regime_cfg, hysteresis)
+        configure = getattr(instance, "configure_hysteresis", None)
+        if callable(configure):
+            configure(hysteresis)
+            log(f"regime: hysteresis {hysteresis}")
+        else:
+            log(f"regime: {path} does not support hysteresis; "
+                f"regime.hysteresis is being ignored")
+
     log(f"regime: classifier {path}")
     return instance
 
