@@ -26,7 +26,7 @@
 
 exchange:
   base_url: "https://api.codetoimpact.sg"   # sandbox/live URL from the platform team
-  api_key: "REPLACE_WITH_TEAM_API_KEY"
+  api_key: "c2i_iI2w1FrCqVhrxl-cqMaauw4O6bCwqKZ2"
 
 instruments:
   active:
@@ -47,13 +47,13 @@ strategy:
     # with sqrt(N), trend with N).
     lookback_samples: 25
     momentum_threshold: 0.02
-    trade_quantity: 50
+    trade_quantity: 150
     limit_offset_bps: 5
   ELXR:
     type: mean_reversion
     lookback_samples: 15
     deviation_threshold: 0.004
-    trade_quantity: 100
+    trade_quantity: 300
     limit_offset_bps: 5
   CRVX:
     type: momentum
@@ -61,7 +61,7 @@ strategy:
     # from the previous 0.005/10: 0.0005 per sample x15 = 0.0075.
     lookback_samples: 15
     momentum_threshold: 0.0075
-    trade_quantity: 100
+    trade_quantity: 300
     limit_offset_bps: 5
   DRFT:
     type: mean_reversion
@@ -71,7 +71,7 @@ strategy:
     # nothing is happening" (James p.3).
     lookback_samples: 15
     deviation_threshold: 0.015
-    trade_quantity: 10
+    trade_quantity: 20
     limit_offset_bps: 5
   AXON:
     type: pairs_follow
@@ -82,7 +82,7 @@ strategy:
     leader_breakout_samples: 10  # must be <= NOVA's lookback_samples
     breakout_arm_samples: 5      # follow for this many of our own ticks
     exit_drawdown: 0.004         # leader gives back 0.4% from its high -> close
-    trade_quantity: 50
+    trade_quantity: 150
     limit_offset_bps: 5
 
 # Regime-aware sizing (James Wee, page 3 — "this is the one that matters").
@@ -151,12 +151,12 @@ risk:
   # do. Winston: prioritise NOVA and ELXR for stability; "AXON and CRVX are
   # enhancements". Enhancements therefore do not get bigger books than the
   # primary.
-  max_position_primary: 500      # NOVA
-  max_position_secondary: 400    # ELXR
+  max_position_primary: 1500     # NOVA
+  max_position_secondary: 1200   # ELXR
   max_position:
-    CRVX: 600                    # enhancement, momentum — modest
-    AXON: 500                    # follower must not exceed its leader's cap
-    DRFT: 100                    # ~1/5 of NOVA, per Priya Sundaram
+    CRVX: 1800                   # enhancement, momentum — modest
+    AXON: 1500                   # follower must not exceed its leader's cap
+    DRFT: 200                    # thin book — kept small relative to others
 
   # --- correlated groups (BUG-008) ----------------------------------------
   # Per-instrument caps can all be satisfied while the book is one directional
@@ -176,7 +176,7 @@ risk:
   correlated_groups:
     energy_freight:
       symbols: ["NOVA", "AXON"]
-      max_notional_cents: 15000000
+      max_notional_cents: 45000000
 
   # --- exits --------------------------------------------------------------
   # Fractions of the cost basis the exchange reports in
