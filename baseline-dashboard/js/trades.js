@@ -98,6 +98,7 @@
       self.list.push({
         orderId: id, status: status, at: e.at || "", remaining: e.remaining,
         source: "bot", symbol: e.symbol, side: e.side, quantity: e.quantity, price: e.price, code: e.code || undefined,
+        strategy: e.strategy || undefined, // which strategy submitted it (momentum, mean_reversion, dca, crash_guard), when the bot journals it
       });
       changed = true;
     });
@@ -110,6 +111,13 @@
 
   LifecycleHistory.prototype.entries = function () {
     return this.list.slice();
+  };
+  // orderId -> strategy name, for rows that come from GET /orders (which
+  // carries no strategy) and for fill markers on the chart.
+  LifecycleHistory.prototype.strategies = function () {
+    var out = {};
+    this.list.forEach(function (e) { if (e.strategy) out[e.orderId] = e.strategy; });
+    return out;
   };
   LifecycleHistory.prototype.reached = function (status) {
     var ids = {};

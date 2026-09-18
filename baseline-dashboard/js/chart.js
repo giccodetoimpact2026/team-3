@@ -83,7 +83,7 @@
     // Our fills.
     fills.forEach(function (t) {
       var side = String(t.side || "").toLowerCase() === "sell" ? "sell" : "buy";
-      out.push('<circle class="fill ' + side + '" cx="' + n1(x(t.t)) + '" cy="' + n1(y(t.p)) + '" r="4"><title>' + side.toUpperCase() + " " + esc(t.quantity) + " @ " + esc(fmt.formatCurrency(t.p)) + " · " + esc(clock(t.t)) + "</title></circle>");
+      out.push('<circle class="fill ' + side + '" cx="' + n1(x(t.t)) + '" cy="' + n1(y(t.p)) + '" r="4"><title>' + side.toUpperCase() + " " + esc(t.quantity) + " @ " + esc(fmt.formatCurrency(t.p)) + " · " + esc(clock(t.t)) + (t.strategy ? " · " + esc(t.strategy) : "") + "</title></circle>");
     });
     out.push("</svg>");
     return out.join("");

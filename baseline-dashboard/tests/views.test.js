@@ -51,3 +51,9 @@ test("sectionsFor: open orders are visible to trader, risk and ops, not executiv
   ["trader", "risk", "ops"].forEach((v) => assert.ok(sectionsFor(v).includes("open-orders"), v + " should show open-orders"));
   assert.ok(!sectionsFor("executive").includes("open-orders"));
 });
+
+test("sectionsFor: the health strip is in every view; announcements in every view but ops", () => {
+  VIEWS.forEach((v) => assert.ok(isVisible(v.id, "health"), "health in " + v.id));
+  ["executive", "trader", "risk", "analyst"].forEach((v) => assert.ok(isVisible(v, "announcements"), v));
+  assert.ok(!isVisible("ops", "announcements"));
+});

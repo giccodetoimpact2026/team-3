@@ -135,6 +135,34 @@ const Panels = {
     $("#correlation-meta").text(Math.round((m.bucketMs * m.buckets) / 60000) + "-minute window, " + (m.bucketMs / 1000) + "s returns. Red = move together (long both is one doubled bet), blue = opposite. Dash = not enough common samples yet.");
   },
 
+  // --- System health strip (every view) --------------------------------------
+  renderHealth: function (items) {
+    $("#health-strip").html((items || []).map(function (i) {
+      return "<div class=\"health-item " + escapeHtml(i.state) + "\" title=\"" + escapeHtml(i.detail) + "\"><span class=\"big-dot\"></span><span><span class=\"h-label\">" + escapeHtml(i.label) + "</span><span class=\"h-detail\">" + escapeHtml(i.detail) + "</span></span></div>";
+    }).join(""));
+  },
+
+  // --- Announcement impact cards -------------------------------------------------
+  renderAnnouncements: function (entries) {
+    var self = this;
+    entries = entries || [];
+    $("#announcements-list").html(entries.map(function (e) {
+      var a = e.announcement || {};
+      var head = "<div class=\"headline\"><span class=\"when\">" + escapeHtml(formatSgt(a.timestamp || new Date())) + (a.announcement_id !== undefined ? " · #" + escapeHtml(a.announcement_id) : "") + (a.affected_symbol ? " · named " + escapeHtml(a.affected_symbol) : "") + "</span><span class=\"msg-text\">" + escapeHtml(a.message) + "</span></div>";
+      if (e.status === "pending") return "<div class=\"impact-card pending\">" + head + "<div class=\"rationale\">Analysing across the supply chain…</div></div>";
+      if (e.status === "failed") return "<div class=\"impact-card failed\">" + head + "<div class=\"rationale\">Analysis unavailable: " + escapeHtml(e.error || "LLM error") + "</div></div>";
+      var imp = e.impact || { affected: [], uncertainty: "high", rationale: "" };
+      var chips = imp.affected.length ? imp.affected.map(function (x) {
+        var arrow = x.direction === "up" ? "▲" : x.direction === "down" ? "▼" : "▶";
+        return "<span class=\"impact " + escapeHtml(x.direction) + "\" title=\"" + escapeHtml(x.reason) + "\"><span class=\"sym\">" + arrow + " " + escapeHtml(x.symbol) + "</span><span class=\"mag\">" + escapeHtml(x.magnitude) + "</span> " + escapeHtml(x.reason) + "</span>";
+      }).join("") : "<span class=\"impact\">No instrument judged affected</span>";
+      return "<div class=\"impact-card\">" + head + "<div class=\"impacts\">" + chips + "</div>" +
+        (imp.rationale ? "<div class=\"rationale\">" + escapeHtml(imp.rationale) + "</div>" : "") +
+        "<div class=\"advisory\">Model reasoning (haiku), uncertainty <span class=\"conf " + escapeHtml(imp.uncertainty === "low" ? "high" : imp.uncertainty === "high" ? "low" : "medium") + "\">" + escapeHtml(imp.uncertainty) + "</span> · advisory only, no orders placed" + (e.usage ? " · " + (e.usage.input_tokens || 0) + " in / " + (e.usage.output_tokens || 0) + " out tokens" : "") + "</div></div>";
+    }).join(""));
+    if (entries.length) $("#announcements-meta").text(entries.length + " analysed this window · advisory only");
+  },
+
   // --- Analyst: forecast cards ---------------------------------------------
   renderForecast: function (cards) {
     var self = this;
@@ -143,12 +171,14 @@ const Panels = {
       if (!f) {
         return "<div class=\"forecast-card\"><div class=\"sym\">" + escapeHtml(s) + "<span class=\"conf unverified\">no estimate</span></div><div class=\"proj\">" + self.DASH + "</div><div class=\"basis\">Collecting price samples (" + (c.samples || 0) + "/" + CONFIG.FORECAST_MIN_SAMPLES + ")</div></div>";
       }
-      var dir = f.projected > f.last ? "▲" : f.projected < f.last ? "▼" : "▶";
-      var pct = ((f.projected - f.last) / f.last * 100).toFixed(2);
+      var dir = f.driftUsed === false ? "▶" : f.projected > f.last ? "▲" : f.projected < f.last ? "▼" : "▶";
+      var pct = (typeof f.changePct === "number" ? f.changePct : ((f.projected - f.last) / f.last * 100)).toFixed(2);
+      var half = ((f.bandPct || 0) * 50).toFixed(2);
+      var mins = Math.round(f.horizonMs / 6000) / 10;
       return "<div class=\"forecast-card\"><div class=\"sym\">" + escapeHtml(s) + "<span class=\"conf " + escapeHtml(f.confidence) + "\">" + escapeHtml(f.confidence) + "</span></div>" +
-        "<div class=\"proj\">" + dir + " " + escapeHtml(formatCurrency(f.projected)) + " <small>(" + (pct > 0 ? "+" : "") + pct + "%)</small></div>" +
+        "<div class=\"proj\">" + dir + " " + escapeHtml(formatCurrency(f.projected)) + " <small>(" + (f.driftUsed === false ? "no drift" : (pct > 0 ? "+" : "") + pct + "%") + " · ±" + half + "%)</small></div>" +
         "<div class=\"band\">90% band " + escapeHtml(formatCurrency(f.lower)) + " to " + escapeHtml(formatCurrency(f.upper)) + " · last " + escapeHtml(formatCurrency(f.last)) + "</div>" +
-        "<div class=\"basis\">Estimate, " + Math.round(f.horizonMs / 60000) + " min ahead. " + escapeHtml(f.method) + "</div></div>";
+        "<div class=\"basis\">Estimate " + mins + " min ahead. " + escapeHtml(f.method) + "</div></div>";
     }).join(""));
   },
 
@@ -170,8 +200,8 @@ const Panels = {
     if (!$body.length) return; // section not in the page yet
     $body.html(rows.length ? rows.map(function (r) {
       var age = r.ageS >= 60 ? Math.floor(r.ageS / 60) + "m " + (r.ageS % 60) + "s" : r.ageS + "s";
-      return "<tr><td class=\"mono\" title=\"" + escapeHtml(r.id) + "\">" + escapeHtml(String(r.id || "").slice(0, 8)) + "</td><td class=\"num\">" + escapeHtml(age) + "</td><td>" + escapeHtml(r.symbol) + "</td><td class=\"side " + escapeHtml(String(r.side).toLowerCase()) + "\">" + escapeHtml(r.side) + "</td><td class=\"num\">" + r.quantity + "</td><td class=\"num\">" + r.filled + "</td><td class=\"num\">" + r.remaining + "</td><td class=\"num\">" + escapeHtml(formatCurrency(r.price)) + "</td><td><span class=\"order-status " + escapeHtml(String(r.status).toLowerCase()) + "\">" + escapeHtml(r.status) + "</span></td></tr>";
-    }).join("") : "<tr><td colspan=\"9\" class=\"empty\">Nothing resting: the bot has no open orders on the exchange</td></tr>");
+      return "<tr><td class=\"mono\" title=\"" + escapeHtml(r.id) + "\">" + escapeHtml(String(r.id || "").slice(0, 8)) + "</td><td class=\"num\">" + escapeHtml(age) + "</td><td>" + escapeHtml(r.symbol) + "</td><td class=\"side " + escapeHtml(String(r.side).toLowerCase()) + "\">" + escapeHtml(r.side) + "</td><td>" + (r.strategy ? "<span class=\"strategy\">" + escapeHtml(r.strategy) + "</span>" : self.DASH) + "</td><td class=\"num\">" + r.quantity + "</td><td class=\"num\">" + r.filled + "</td><td class=\"num\">" + r.remaining + "</td><td class=\"num\">" + escapeHtml(formatCurrency(r.price)) + "</td><td><span class=\"order-status " + escapeHtml(String(r.status).toLowerCase()) + "\">" + escapeHtml(r.status) + "</span></td><td><button type=\"button\" class=\"btn why\" data-order=\"" + escapeHtml(r.id) + "\" data-symbol=\"" + escapeHtml(r.symbol) + "\" title=\"Ask the assistant to explain this order from the bot journal\">Why?</button></td></tr>";
+    }).join("") : "<tr><td colspan=\"11\" class=\"empty\">Nothing resting: the bot has no open orders on the exchange</td></tr>");
     var buys = rows.filter(function (r) { return r.side === "BUY"; }).length;
     $("#open-orders-meta").text(rows.length ? rows.length + " working · " + buys + " buy, " + (rows.length - buys) + " sell · from GET /orders" : "nothing resting");
   },

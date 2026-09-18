@@ -18,7 +18,31 @@ const AssistantPanel = {
     "What is the 5-minute outlook for NOVA?",
   ],
 
+  llmState: null, // {state, detail, at} for the health strip
+
+  noteLlm: function (state, detail) {
+    this.llmState = { state: state, detail: detail, at: Date.now() };
+  },
+
+  llmHealth: function (now) {
+    var s = this.llmState;
+    if (!s) return { state: "unknown", detail: "not called yet" };
+    var age = Math.round(((now || Date.now()) - s.at) / 1000);
+    return { state: s.state, detail: s.detail + " · " + age + "s ago" };
+  },
+
+  probeHealth: function () {
+    var self = this;
+    $.ajax({ url: CONFIG.LLM_BASE_URL + "/health", method: "GET", dataType: "json", timeout: 8000 })
+      .then(function (r) { if (!self.llmState || self.llmState.state !== "warn") self.noteLlm("ok", "reachable" + (r && r.mock_mode ? " (mock mode)" : "")); },
+            function (xhr) { self.noteLlm("bad", "health check failed (" + ((xhr && xhr.status) || "network") + ")"); });
+  },
+
   init: function (ctx) {
+    var probe = this.probeHealth.bind(this);
+    probe();
+    setTimeout(probe, 5000); // the first probe can race the page's other startup reads
+    setInterval(probe, CONFIG.LLM_HEALTH_INTERVAL_MS || 60000);
     var self = this;
     this.ctx = ctx;
     var $chips = $("#assistant-chips").empty();
@@ -43,7 +67,13 @@ const AssistantPanel = {
         dataType: "json",
         data: JSON.stringify(body),
         timeout: 60000,
-      }).then(resolve, function (xhr) {
+      }).then(function (resp) {
+        var u = resp && resp.usage;
+        AssistantPanel.noteLlm("ok", "answered" + (u ? ", " + (u.input_tokens || 0) + "/" + (u.output_tokens || 0) + " tokens" : ""));
+        resolve(resp);
+      }, function (xhr) {
+        var st = xhr && xhr.status;
+        AssistantPanel.noteLlm(st === 429 ? "warn" : "bad", st === 429 ? "rate limited (429)" : st === 402 ? "credit exhausted (402)" : "call failed (" + (st || "network") + ")");
         var err = xhr && xhr.responseJSON && xhr.responseJSON.error;
         var code = (err && err.code) || (xhr && xhr.status) || "network";
         var msg = (err && err.message) || (xhr && xhr.statusText) || "no response";
@@ -100,10 +130,20 @@ const AssistantPanel = {
     } else if (name === "get_recent_orders") {
       var limit = Math.min(Number(input.limit) || 20, 50);
       var sym = input.symbol ? String(input.symbol).toUpperCase() : null;
-      var events = self.ctx.history.entries().slice().reverse().filter(function (e) { return !sym || e.symbol === sym; }).slice(0, limit)
-        .map(function (e) {
-          return { order_id: String(e.orderId).slice(0, 8), at_sgt: formatSgt(e.at), symbol: e.symbol, side: e.side, quantity: e.quantity, limit_price: e.price === undefined ? null : e.price / 100, status: e.status, code: e.code || null, reported_by: e.source || "exchange" };
-        });
+      // Entries observed from GET /orders carry only id/status/time; fill in
+      // symbol, side, size and price from the exchange order, as the table does.
+      var byId = {};
+      (self.ctx.orders || []).forEach(function (o) { byId[o.id] = o; });
+      var strategyOf = self.ctx.history.strategies ? self.ctx.history.strategies() : {};
+      var events = self.ctx.history.entries().slice().reverse().map(function (e) {
+        var o = byId[e.orderId] || {};
+        return {
+          order_id: String(e.orderId).slice(0, 8), at_sgt: formatSgt(e.at), symbol: e.symbol || o.symbol, side: e.side || o.side,
+          quantity: e.quantity !== undefined ? e.quantity : o.quantity, limit_price: (e.price !== undefined ? e.price : o.price) === undefined ? null : (e.price !== undefined ? e.price : o.price) / 100,
+          unfilled: e.remaining !== undefined && e.remaining !== null ? e.remaining : o.remaining_qty, status: e.status, code: e.code || null,
+          strategy: strategyOf[e.orderId] || null, reported_by: e.source === "bot" ? "bot journal" : "exchange",
+        };
+      }).filter(function (e) { return !sym || e.symbol === sym; }).slice(0, limit);
       p = local("bot order journal (GET /bot/orders) and GET /orders, prices in SGD", { count: events.length, events: events, note: events.length ? undefined : "no order events observed this session" });
     } else {
       p = Promise.reject(new Error("unknown tool " + name));
@@ -160,7 +200,7 @@ const AssistantPanel = {
   renderAnswer: function ($el, text, citations, conf, usage) {
     $el.removeClass("thinking").text(text);
     var $meta = $("<div class=\"meta\"></div>");
-    $meta.append($("<span class=\"conf " + escapeHtml(conf.label) + "\"></span>").text("confidence " + conf.label).attr("title", conf.reason));
+    $meta.append($("<span class=\"conf " + escapeHtml(conf.label) + "\"></span>").text("evidence " + conf.label).attr("title", "How well the answer is backed by tool results: " + conf.reason));
     $meta.append($("<span></span>").text(conf.reason + "."));
     citations.forEach(function (c) {
       var label = c.ok ? c.name + " ← " + (c.source || "?") + (c.as_of ? " @ " + c.as_of : "") : c.name + " failed";
@@ -168,6 +208,24 @@ const AssistantPanel = {
     });
     if (usage) $meta.append($("<span></span>").text(CONFIG.LLM_MODEL + " · " + (usage.input_tokens || 0) + " in / " + (usage.output_tokens || 0) + " out tokens"));
     $el.append($meta);
+  },
+
+  // --- explain a trade (CIO: "when the bot sells DRFT at 14:32, I want to know why") ---
+  explainOrder: function (orderId, symbol) {
+    var id8 = String(orderId || "").slice(0, 8);
+    var q = "Explain order " + id8 + (symbol ? " on " + symbol : "") + ": what did the bot do (side, quantity, limit price, status and timing), and why would it have done that given the bot's guards, the recent price path and the forecast? Use get_recent_orders" + (symbol ? " for " + symbol : "") + " and get_forecast; say plainly if the reason is not recorded.";
+    var el = document.getElementById("assistant");
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    this.ask(q);
+  },
+
+  // --- announcement impact (one haiku call per announcement) ---------------------
+  analyseAnnouncement: function (a, instrumentInfo, symbols) {
+    return this.llmWithRetry(Assistant.announcementRequest(a, instrumentInfo || [])).then(function (resp) {
+      var impact = Assistant.parseImpact(Assistant.finalText(resp), symbols);
+      if (!impact) throw { message: "model returned no parseable verdict" };
+      return { impact: impact, usage: resp.usage };
+    });
   },
 
   // --- executive briefing ---------------------------------------------------

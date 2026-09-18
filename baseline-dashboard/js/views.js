@@ -14,32 +14,32 @@
   }
 })(typeof self !== "undefined" ? self : this, function () {
   // Sections shown in every view.
-  var ALWAYS = ["assistant"];
+  var ALWAYS = ["health", "assistant"];
 
   var VIEWS = [
     {
       id: "executive",
       label: "Executive",
       audience: "Deputy COO, CIO: did the bot make money, how much, which instruments, was it stable",
-      sections: ["cards", "heatmap", "briefing", "pnl"],
+      sections: ["announcements", "cards", "heatmap", "briefing", "pnl"],
     },
     {
       id: "trader",
       label: "Trader",
       audience: "Senior traders: chart with our fills and the forecast, positions, fill rates, order counters",
-      sections: ["cards", "ops-strip", "chart", "open-orders", "positions", "fillrate", "pnl"],
+      sections: ["announcements", "cards", "ops-strip", "chart", "open-orders", "positions", "fillrate", "pnl"],
     },
     {
       id: "risk",
       label: "Risk",
       audience: "Deputy CIO, risk desk, PM: alerts, exposure against caps, correlation, bot guards",
-      sections: ["alerts", "risk-radar", "open-orders", "correlation", "guards"],
+      sections: ["announcements", "alerts", "risk-radar", "open-orders", "correlation", "guards"],
     },
     {
       id: "analyst",
       label: "Analyst",
       audience: "Investment analyst: forecast with confidence, trading performance breakdown",
-      sections: ["forecast", "performance", "pnl"],
+      sections: ["announcements", "forecast", "performance", "pnl"],
     },
     {
       id: "ops",

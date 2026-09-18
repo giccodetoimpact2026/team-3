@@ -74,26 +74,35 @@
     var stepMs = spanMs > 0 ? spanMs / (n - 1) : 1000;
     var k = horizonMs / stepMs;
     var last = samples[n - 1].p;
-    var drift = mu1 * k;
+    // Only extrapolate the drift when it is distinguishable from noise
+    // (|t| >= 2 on the per-sample mean); otherwise a random walk around the
+    // last price is the honest estimate, and only the band carries information.
+    var t = sd1 > 0 ? (mu1 / (sd1 / Math.sqrt(rets.length))) : (mu1 !== 0 ? Infinity : 0);
+    var driftUsed = Math.abs(t) >= 2;
+    var drift = driftUsed ? mu1 * k : 0;
     var sigma = sd1 * Math.sqrt(k);
     var projected = Math.round(last * Math.exp(drift));
     var lower = Math.round(last * Math.exp(drift - z * sigma));
     var upper = Math.round(last * Math.exp(drift + z * sigma));
     var bandPct = (upper - lower) / last;
-    var confidence = n < 60 || bandPct > 0.05 ? "low" : n < 150 || bandPct > 0.02 ? "medium" : "high";
+    var confidence = n < 40 || bandPct > 0.03 ? "low" : n < 100 || bandPct > 0.01 ? "medium" : "high";
+    var mins = Math.round(horizonMs / 60000 * 10) / 10;
     return {
       last: last,
       projected: projected,
       lower: lower,
       upper: upper,
+      changePct: ((projected - last) / last) * 100,
       horizonMs: horizonMs,
       samples: n,
       stepMs: Math.round(stepMs),
       drift: mu1,
+      driftUsed: driftUsed,
       vol: sd1,
       bandPct: bandPct,
       confidence: confidence,
-      method: "drift + volatility of log returns over the last " + n + " price samples (~" + Math.round(stepMs / 1000) + "s apart), 90% band",
+      method: (driftUsed ? "drift + volatility" : "random walk (drift not significant, t=" + (Math.round(t * 10) / 10) + ") + volatility") +
+        " of log returns over the last " + n + " price samples (~" + Math.round(stepMs / 1000) + "s apart), " + mins + " min ahead, 90% band",
     };
   }
 

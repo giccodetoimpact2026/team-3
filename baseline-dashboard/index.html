@@ -29,6 +29,20 @@
       <div id="announcement" class="announcement" style="display: none"></div>
       <p class="view-audience" id="view-audience"></p>
 
+      <!-- System health (Winston: "one screen tells me if the system is healthy"). Every view. -->
+      <section class="health" id="health" data-section="health" aria-label="System health">
+        <div class="health-strip" id="health-strip"></div>
+      </section>
+
+      <!-- Announcement impact (Sophia: reason across the supply chain; advisory only) -->
+      <section class="announcements" id="announcements" data-section="announcements">
+        <div class="section-head">
+          <h2>Announcement impact</h2>
+          <span class="section-meta" id="announcements-meta">Waiting for market announcements on the feed. Each one is analysed once by the LLM service (haiku) across the supply chain. Advisory only: nothing here places orders.</span>
+        </div>
+        <div class="announcement-list" id="announcements-list"></div>
+      </section>
+
       <!-- Risk: alerts (Priya) -->
       <section class="alerts" id="alerts" data-section="alerts">
         <div class="section-head">
@@ -39,6 +53,10 @@
       </section>
 
       <section class="cards" data-section="cards">
+        <div class="card primary" id="card-total-pnl" title="Realized plus unrealized P&amp;L this window, mark-to-market">
+          <div class="label">Total P&amp;L</div>
+          <div class="value">—</div>
+        </div>
         <div class="card" id="card-total-value">
           <div class="label">Total Value</div>
           <div class="value">—</div>
@@ -104,11 +122,13 @@
               <th class="num">Age</th>
               <th>Symbol</th>
               <th>Side</th>
+              <th title="Which bot strategy submitted the order (from the bot journal)">Strategy</th>
               <th class="num">Qty</th>
               <th class="num">Filled</th>
-              <th class="num">Remaining</th>
+              <th class="num" title="Quantity of this order still waiting on the book">Unfilled</th>
               <th class="num">Limit</th>
               <th>Status</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="open-orders-body"></tbody>
@@ -282,10 +302,13 @@
               <th>Time (SGT)</th>
               <th>Instrument</th>
               <th>Side</th>
+              <th title="Which bot strategy submitted the order (from the bot journal); dash when the bot did not report it">Strategy</th>
               <th class="num">Qty</th>
               <th class="num">Limit</th>
-              <th class="num">Remaining</th>
+              <th class="num" title="Quantity of this order filled by this point">Filled</th>
+              <th class="num" title="Quantity of this order still unfilled at this point; 0 on a FILLED row">Unfilled</th>
               <th>Status</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="lifecycle-body"></tbody>

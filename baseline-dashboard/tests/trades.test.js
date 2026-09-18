@@ -283,3 +283,16 @@ test("LifecycleHistory.record: persists like observe() and reloads", () => {
   assert.strictEqual(new LifecycleHistory("s1", store).entries().length, 1);
   assert.strictEqual(new LifecycleHistory("s2", store).entries().length, 0);
 });
+
+test("LifecycleHistory.record: keeps the submitting strategy from the bot journal when present", () => {
+  const h = new LifecycleHistory("s9", null);
+  h.record([
+    { seq: 1, order_id: "o1", symbol: "NOVA", side: "buy", quantity: 100, price: 15000, status: "OPEN", at: "2026-09-18T01:00:00Z", strategy: "momentum" },
+    { seq: 2, order_id: "o2", symbol: "ELXR", side: "buy", quantity: 50, price: 30000, status: "OPEN", at: "2026-09-18T01:00:01Z" },
+  ]);
+  const byId = {};
+  h.entries().forEach((e) => { byId[e.orderId] = e; });
+  assert.strictEqual(byId.o1.strategy, "momentum");
+  assert.strictEqual(byId.o2.strategy, undefined);
+  assert.deepStrictEqual(h.strategies(), { o1: "momentum" });
+});

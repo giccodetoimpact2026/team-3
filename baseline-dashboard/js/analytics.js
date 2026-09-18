@@ -234,5 +234,48 @@
     };
   }
 
-  return { heatTiles: heatTiles, fillRateRows: fillRateRows, exposureRows: exposureRows, netExposure: netExposure, evaluateAlerts: evaluateAlerts, performanceRows: performanceRows, sessionSummary: sessionSummary, openOrderRows: openOrderRows, DEFAULT_THRESHOLDS: DEFAULT_THRESHOLDS };
+  // One line per component for the system-health strip (Winston: "one screen
+  // tells me if the system is healthy"). States: ok | warn | bad | unknown.
+  function age(now, t) { return t ? Math.max(0, Math.round((now - t) / 1000)) : null; }
+  function healthItems(ctx, now) {
+    ctx = ctx || {};
+    now = now === undefined ? Date.now() : now;
+    var items = [];
+
+    var b = ctx.bot;
+    if (b === null) items.push({ id: "bot", label: "Bot", state: "bad", detail: "offline: no answer from the control endpoint" });
+    else if (!b) items.push({ id: "bot", label: "Bot", state: "unknown", detail: "not polled yet" });
+    else {
+      var st = String(b.state || "").toUpperCase();
+      var dead = b.feed_state === "DEAD" || (typeof b.heartbeat_age_s === "number" && b.heartbeat_age_s > 15);
+      if (st === "RUNNING" && dead) items.push({ id: "bot", label: "Bot", state: "bad", detail: "running but not alive: feed " + (b.feed_state || "?") + (typeof b.heartbeat_age_s === "number" ? ", heartbeat " + b.heartbeat_age_s + "s ago" : "") });
+      else if (st === "RUNNING" && b.orders && b.orders.paused) items.push({ id: "bot", label: "Bot", state: "warn", detail: "paused: " + (b.orders.pause_reason || "anomaly") });
+      else if (st === "RUNNING") items.push({ id: "bot", label: "Bot", state: "ok", detail: "running" + (typeof b.heartbeat_age_s === "number" ? ", heartbeat " + b.heartbeat_age_s + "s ago" : "") + (b.feed_state ? ", feed " + String(b.feed_state).toLowerCase() : "") });
+      else if (st === "STOPPED" || st === "QUIESCING") items.push({ id: "bot", label: "Bot", state: "warn", detail: st === "STOPPED" ? "halted" : "halting" });
+      else items.push({ id: "bot", label: "Bot", state: "unknown", detail: st || "unknown state" });
+    }
+
+    var evAge = age(now, ctx.lastEventAt);
+    if (ctx.feedOnline === false) items.push({ id: "feed", label: "Market feed", state: "bad", detail: "SSE disconnected, reconnecting" });
+    else if (ctx.feedOnline === undefined) items.push({ id: "feed", label: "Market feed", state: "unknown", detail: "connecting" });
+    else if (evAge !== null && evAge > 20) items.push({ id: "feed", label: "Market feed", state: "warn", detail: "connected but no events for " + evAge + "s" });
+    else items.push({ id: "feed", label: "Market feed", state: "ok", detail: evAge === null ? "connected" : "last event " + evAge + "s ago" });
+
+    var exAge = age(now, ctx.exchangeOkAt);
+    if (ctx.exchangeError === 429) items.push({ id: "exchange", label: "Exchange", state: "warn", detail: "rate limited (429), showing data from " + (exAge === null ? "?" : exAge + "s ago") });
+    else if (ctx.exchangeError) items.push({ id: "exchange", label: "Exchange", state: "bad", detail: "last read failed (" + ctx.exchangeError + ")" + (exAge !== null ? ", data " + exAge + "s old" : "") });
+    else if (exAge === null) items.push({ id: "exchange", label: "Exchange", state: "unknown", detail: "no read yet" });
+    else if (exAge > 30) items.push({ id: "exchange", label: "Exchange", state: "warn", detail: "last successful read " + exAge + "s ago" });
+    else items.push({ id: "exchange", label: "Exchange", state: "ok", detail: "last read " + exAge + "s ago" });
+
+    if (ctx.mcpFailedAt && ctx.mcpFailedAt >= (ctx.mcpOkAt || 0)) items.push({ id: "mcp", label: "MCP server", state: "bad", detail: "unreachable" + (ctx.mcpOkAt ? ", last answer " + age(now, ctx.mcpOkAt) + "s ago" : "") });
+    else if (ctx.mcpOkAt) items.push({ id: "mcp", label: "MCP server", state: "ok", detail: "answered " + age(now, ctx.mcpOkAt) + "s ago" });
+    else items.push({ id: "mcp", label: "MCP server", state: "unknown", detail: "not called yet" });
+
+    var l = ctx.llm || {};
+    items.push({ id: "llm", label: "LLM service", state: l.state || "unknown", detail: l.detail || "not called yet" });
+    return items;
+  }
+
+  return { healthItems: healthItems, heatTiles: heatTiles, fillRateRows: fillRateRows, exposureRows: exposureRows, netExposure: netExposure, evaluateAlerts: evaluateAlerts, performanceRows: performanceRows, sessionSummary: sessionSummary, openOrderRows: openOrderRows, DEFAULT_THRESHOLDS: DEFAULT_THRESHOLDS };
 });

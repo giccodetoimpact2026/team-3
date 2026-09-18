@@ -81,3 +81,31 @@ test("briefingRequest: one-shot on the cheaper model, no tools, figures embedded
   assert.ok(body.messages[0].content.includes("-53563.75") && body.messages[0].content.includes("CRVX"));
   assert.ok(/30 seconds|executive/i.test(body.system));
 });
+
+test("announcementRequest: one-shot haiku, no tools, asks for a JSON verdict across the supply chain", () => {
+  const a = { message: "Sanctions announced on freight operators", affected_symbol: "AXON", announcement_id: 7 };
+  const instruments = [{ symbol: "NOVA", name: "Nova Energy", sector: "Oil & Gas" }, { symbol: "AXON", name: "Axon Freight", sector: "Logistics & Shipping" }];
+  const body = S.announcementRequest(a, instruments);
+  assert.strictEqual(body.model, "haiku");
+  assert.ok(!body.tools);
+  assert.ok(body.max_tokens >= 500 && body.max_tokens <= 800, "enough room for the JSON verdict, still cheap");
+  assert.ok(/supply chain/i.test(body.system) && /JSON/.test(body.system) && /advisory|no orders|never place/i.test(body.system));
+  const user = body.messages[0].content;
+  assert.ok(user.includes("Sanctions announced on freight operators") && user.includes("AXON") && user.includes("Oil & Gas"));
+});
+
+test("parseImpact: reads the JSON verdict, tolerating prose and code fences, and normalises directions", () => {
+  const text = "Here is the verdict:\n```json\n{\"affected\":[{\"symbol\":\"axon\",\"direction\":\"DOWN\",\"magnitude\":\"high\",\"reason\":\"direct hit\"},{\"symbol\":\"NOVA\",\"direction\":\"bearish\",\"magnitude\":\"low\",\"reason\":\"ripple\"},{\"symbol\":\"ZZZZ\",\"direction\":\"up\"}],\"uncertainty\":\"medium\",\"rationale\":\"freight follows energy\"}\n```";
+  const out = S.parseImpact(text, ["NOVA", "AXON", "CRVX"]);
+  assert.deepStrictEqual(out.affected, [
+    { symbol: "AXON", direction: "down", magnitude: "high", reason: "direct hit" },
+    { symbol: "NOVA", direction: "down", magnitude: "low", reason: "ripple" },
+  ]);
+  assert.strictEqual(out.uncertainty, "medium");
+  assert.strictEqual(out.rationale, "freight follows energy");
+});
+
+test("parseImpact: garbage returns null", () => {
+  assert.strictEqual(S.parseImpact("no json here", ["NOVA"]), null);
+  assert.strictEqual(S.parseImpact("", ["NOVA"]), null);
+});

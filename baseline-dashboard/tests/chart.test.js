@@ -53,3 +53,9 @@ test("chartSvg: draws each resting order as a dashed line at its limit price wit
   assert.ok(svg.includes("BUY 100 @ $100.40"));
   assert.ok(svg.includes("$102.00"), "y range grows to include the resting sell");
 });
+
+test("chartSvg: a fill's strategy appears in its tooltip", () => {
+  const fills = [{ t: 1758182402000, p: 10020, side: "buy", quantity: 100, strategy: "dca" }];
+  const svg = chartSvg({ symbol: "NOVA", samples, fills, width: 600, height: 200 });
+  assert.ok(svg.includes("<title>BUY 100 @ $100.20") && svg.includes("· dca"));
+});

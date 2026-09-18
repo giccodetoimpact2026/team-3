@@ -112,3 +112,43 @@ test("openOrderRows: resting orders only, newest first, with filled quantity and
   ]);
   assert.deepStrictEqual(A.openOrderRows([], now), []);
 });
+
+test("healthItems: five components in order, each with a state and a detail", () => {
+  const now = 1000000;
+  const items = A.healthItems({
+    bot: { state: "RUNNING", feed_state: "OK", heartbeat_age_s: 2, orders: { paused: false } },
+    feedOnline: true, lastEventAt: now - 3000,
+    exchangeOkAt: now - 2000, exchangeError: null,
+    mcpOkAt: now - 5000, mcpFailedAt: 0,
+    llm: { state: "ok", detail: "answered 12s ago" },
+  }, now);
+  assert.deepStrictEqual(items.map((i) => [i.id, i.state]), [["bot", "ok"], ["feed", "ok"], ["exchange", "ok"], ["mcp", "ok"], ["llm", "ok"]]);
+  items.forEach((i) => assert.ok(i.label && typeof i.detail === "string", i.id));
+});
+
+test("healthItems: offline bot is bad, paused bot and halted bot are warn", () => {
+  assert.strictEqual(A.healthItems({ bot: null }, 0)[0].state, "bad");
+  assert.strictEqual(A.healthItems({ bot: { state: "RUNNING", orders: { paused: true, pause_reason: "order-rate anomaly" } } }, 0)[0].state, "warn");
+  assert.strictEqual(A.healthItems({ bot: { state: "STOPPED" } }, 0)[0].state, "warn");
+  assert.strictEqual(A.healthItems({ bot: { state: "RUNNING", feed_state: "DEAD" } }, 0)[0].state, "bad");
+});
+
+test("healthItems: feed offline is bad; a silent feed is warn with the silence in the detail", () => {
+  const now = 100000;
+  assert.strictEqual(A.healthItems({ feedOnline: false }, now)[1].state, "bad");
+  const silent = A.healthItems({ feedOnline: true, lastEventAt: now - 45000 }, now)[1];
+  assert.strictEqual(silent.state, "warn");
+  assert.ok(silent.detail.includes("45s"));
+});
+
+test("healthItems: exchange rate-limited is warn, never read is unknown; MCP failure after success is bad", () => {
+  const now = 100000;
+  const rl = A.healthItems({ exchangeOkAt: now - 40000, exchangeError: 429 }, now)[2];
+  assert.strictEqual(rl.state, "warn");
+  assert.ok(/429|rate/i.test(rl.detail));
+  assert.strictEqual(A.healthItems({}, now)[2].state, "unknown");
+  assert.strictEqual(A.healthItems({ mcpOkAt: now - 60000, mcpFailedAt: now - 1000 }, now)[3].state, "bad");
+  assert.strictEqual(A.healthItems({}, now)[3].state, "unknown");
+  assert.strictEqual(A.healthItems({ llm: { state: "warn", detail: "rate limited" } }, now)[4].state, "warn");
+  assert.strictEqual(A.healthItems({}, now)[4].state, "unknown");
+});

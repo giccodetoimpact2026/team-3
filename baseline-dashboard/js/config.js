@@ -15,9 +15,11 @@ const CONFIG = {
   LLM_MAX_TOKENS: 512,
   LLM_MAX_TOOL_ROUNDS: 4, // tool-use round trips per question before the panel gives up
   PRICE_HISTORY_CAPACITY: 900, // SSE price samples kept per symbol (~5 min at 3/s); there is no candles endpoint
-  FORECAST_HORIZON_MS: 300000, // 5-minute model estimate
+  FORECAST_HORIZON_MS: 60000, // 1-minute model estimate; samples arrive every 2-5 s, so longer horizons extrapolate too far to be credible
   FORECAST_MIN_SAMPLES: 20,
   CORRELATION_BUCKET_MS: 5000,
   CORRELATION_BUCKETS: 60, // 5 minutes of 5 s buckets
+  LLM_HEALTH_INTERVAL_MS: 60000, // GET /llm/health probe for the system-health strip (public, no credit)
+  ANNOUNCEMENTS_KEPT: 5, // announcement impact cards kept on screen
   ALERT_THRESHOLDS: { drawdownPct: 15, instrumentDropPct: 10, heartbeatDeadS: 15 }, // Priya: 15% of starting capital
 };

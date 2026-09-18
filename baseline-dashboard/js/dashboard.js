@@ -41,13 +41,24 @@ const DashboardController = {
   alerts: [],
   startPrices: {}, // first price seen per symbol this session (instrument-drop alert)
   startingValue: 0, // first total_value seen this session (drawdown alert)
+  instrumentInfo: [], // full GET /instruments entries (symbol, name, sector) for the announcement analysis
+  announcements: [], // {announcement, status: pending|done|failed, impact, usage, error}, newest first
+  _lastEventAt: 0, // any SSE event
+  _exchangeOkAt: 0, // last successful GET /portfolio or /orders
+  _exchangeError: null, // HTTP status of the last failed exchange read, or null
+  _mcpOkAt: 0,
+  _prev: {}, // last rendered numeric values, for the change flash
 
   init: function () {
     this.cursor = new FeedCursor();
     this.history = new Trades.LifecycleHistory("", null); // unbound until a session id is known
     this.markUnavailable("Connecting…");
     this.renderTimestamp();
-    setInterval(this.renderTimestamp, 1000);
+    var self0 = this;
+    setInterval(function () { self0.renderTimestamp(); self0.renderHealth(); }, 1000);
+    $(document).on("click", ".btn.why", function () {
+      AssistantPanel.explainOrder($(this).attr("data-order"), $(this).attr("data-symbol"));
+    });
     $("#export-csv").on("click", this.exportCsv.bind(this));
     $("#kill-switch").on("click", this.haltBot.bind(this));
     this.pollBotStatus();
@@ -153,12 +164,14 @@ const DashboardController = {
     // starts when the page opened, and fills before that would land off-axis.
     var chartSamples = this.prices.samples(this.chartSymbol);
     var windowStart = chartSamples.length ? chartSamples[0].t : Infinity;
+    var strategyOf = this.history.strategies ? this.history.strategies() : {};
     var fills = ((p && p.trades) || []).filter(function (t) { return t.symbol === self.chartSymbol; }).map(function (t) {
-      return { t: Date.parse(t.timestamp), p: t.price, side: t.side, quantity: t.quantity };
+      return { t: Date.parse(t.timestamp), p: t.price, side: t.side, quantity: t.quantity, strategy: strategyOf[t.order_id] };
     }).filter(function (f) { return f.t >= windowStart; });
     // Resting orders (what the bot is working right now) are drawn on the chart
     // as dashed limit lines and listed in the Open Orders panel.
     var open = Analytics.openOrderRows ? Analytics.openOrderRows(this.orders, Date.now()) : [];
+    open.forEach(function (o) { o.strategy = strategyOf[o.id]; });
     var resting = open.filter(function (o) { return o.symbol === self.chartSymbol; }).map(function (o) { return { side: o.side.toLowerCase(), price: o.price, remaining: o.remaining }; });
     Panels.renderChart(this.chartSymbol, chartSamples, fills, this.forecasts[this.chartSymbol], resting);
     if (Panels.renderOpenOrders) Panels.renderOpenOrders(open);
@@ -271,6 +284,7 @@ const DashboardController = {
     var self = this;
     return ExchangeAPI.getInstruments().then(
       function (list) {
+        self.instrumentInfo = list || [];
         self.instruments = (list || []).map(function (i) { return i.symbol; });
         return self.instruments;
       },
@@ -298,6 +312,7 @@ const DashboardController = {
       self.renderSession(null);
     };
     es.addEventListener("price", function (e) {
+      self._lastEventAt = Date.now();
       if (!self.cursor.accept(e.lastEventId)) return; // replayed
       var d = self.parse(e.data);
       if (d && d.symbol && d.last_price > 0) {
@@ -313,21 +328,24 @@ const DashboardController = {
       // nothing resting and nothing unknown, none of our orders can have
       // changed, so only the portfolio (marks) is re-read; otherwise treat it
       // as a signal that our orders/fills may have changed and re-read them.
+      self._lastEventAt = Date.now();
       if (!self.cursor.accept(e.lastEventId)) return;
       var o = self.bot && self.bot.orders;
       var quiet = o && o.active_orders === 0 && o.unknown_orders === 0;
       self.requestRefresh(quiet ? "portfolio" : "all");
     });
     es.addEventListener("session", function (e) {
+      self._lastEventAt = Date.now();
       if (!self.cursor.accept(e.lastEventId)) return;
       var payload = self.parse(e.data);
       if (payload) self.renderSession(payload.status);
       self.requestRefresh("all");
     });
     es.addEventListener("announcement", function (e) {
+      self._lastEventAt = Date.now();
       if (!self.cursor.accept(e.lastEventId)) return;
       var payload = self.parse(e.data);
-      if (payload) self.renderAnnouncement(payload);
+      if (payload) { self.renderAnnouncement(payload); self.onAnnouncement(payload); }
     });
   },
 
@@ -366,6 +384,8 @@ const DashboardController = {
         self.portfolio = portfolio;
         if (self.cursor.sessionChanged(portfolio.session_id)) self.onSessionChange(portfolio.session_id);
         else self.bindHistory(portfolio.session_id);
+        self._exchangeOkAt = Date.now();
+        self._exchangeError = null;
         self.rememberStartingValue(portfolio);
         self.renderCards(portfolio);
         self.renderPositions(portfolio);
@@ -374,7 +394,15 @@ const DashboardController = {
         self.setConnectivity(true);
         $("#last-updated").removeClass("stale");
       })
-      .fail(function () {
+      .fail(function (xhr) {
+        self._exchangeError = (xhr && xhr.status) || "network";
+        if (xhr && xhr.status === 429 && self.portfolio) {
+          // Rate limited, not disconnected: keep the last good figures, but
+          // mark them stale with their age rather than wiping the screen.
+          $(".card .value, #positions-body").addClass("stale");
+          $("#last-updated").addClass("stale").text("Rate limited (429): showing data from " + formatSgt(new Date(self._exchangeOkAt)));
+          return;
+        }
         self.setConnectivity(false);
         self.markUnavailable("Unavailable");
       });
@@ -387,10 +415,17 @@ const DashboardController = {
         self.orders = orders || [];
         self.bindHistory(self.orders[0] && self.orders[0].session_id);
         self.history.observe(self.orders);
+        self._exchangeOkAt = Date.now();
         self.renderOrders();
         self.requestPanels();
       })
-      .fail(function () {
+      .fail(function (xhr) {
+        self._exchangeError = (xhr && xhr.status) || "network";
+        if (xhr && xhr.status === 429 && self.orders.length) {
+          $("#lifecycle-body, #ops-strip").addClass("stale");
+          $("#lifecycle-count").html("<span class=\"stale-note\">rate limited (429) · showing " + self.history.entries().length + " transitions from " + escapeHtml(formatSgt(new Date(self._exchangeOkAt))) + "</span>");
+          return;
+        }
         self.markOrdersUnavailable("Unavailable");
       });
   },
@@ -404,6 +439,7 @@ const DashboardController = {
       .then(function (resp) {
         self.pnl = resp;
         self._pnlFailedAt = 0;
+        self._mcpOkAt = Date.now();
         self.renderPnl(resp);
         self.requestPanels();
       })
@@ -434,6 +470,8 @@ const DashboardController = {
     this.orders = [];
     this.pnl = null;
     this.prices.reset();
+    this.announcements = [];
+    Panels.renderAnnouncements([]);
     this.startPrices = {};
     this.startingValue = 0;
     this.forecasts = {};
@@ -465,11 +503,65 @@ const DashboardController = {
 
   // --- Rendering -----------------------------------------------------------
 
+  // Write a money value and flash the cell green or red when it moved since
+  // the last render, so a live screen is visibly live.
+  setLive: function (selector, key, cents) {
+    var $el = $(selector);
+    var prev = this._prev[key];
+    $el.text(formatCurrency(cents));
+    if (typeof prev === "number" && typeof cents === "number" && prev !== cents) {
+      var cls = cents > prev ? "flash-up" : "flash-down";
+      $el.removeClass("flash-up flash-down");
+      void $el[0].offsetWidth; // restart the animation
+      $el.addClass(cls);
+    }
+    this._prev[key] = cents;
+  },
+
   renderCards: function (portfolio) {
-    $("#card-total-value .value").text(formatCurrency(portfolio.total_value));
-    $("#card-realized-pnl .value").text(formatCurrency(portfolio.realized_pnl));
-    $("#card-unrealized-pnl .value").text(formatCurrency(portfolio.unrealized_pnl));
+    var pnl = (portfolio.realized_pnl || 0) + (portfolio.unrealized_pnl || 0);
+    this.setLive("#card-total-pnl .value", "pnl", pnl);
+    $("#card-total-pnl .value").toggleClass("pos", pnl > 0).toggleClass("neg", pnl < 0);
+    this.setLive("#card-total-value .value", "total", portfolio.total_value);
+    this.setLive("#card-realized-pnl .value", "realized", portfolio.realized_pnl);
+    this.setLive("#card-unrealized-pnl .value", "unrealized", portfolio.unrealized_pnl);
     $(".card .value").removeClass("stale");
+  },
+
+  // System health strip: bot, feed, exchange reads, MCP, LLM. Re-rendered
+  // every second so the ages tick, from state already in memory.
+  renderHealth: function () {
+    if (typeof Analytics === "undefined" || !Analytics.healthItems) return;
+    var items = Analytics.healthItems({
+      bot: this.bot === undefined ? undefined : this.bot,
+      feedOnline: this._feedOnline,
+      lastEventAt: this._lastEventAt,
+      exchangeOkAt: this._exchangeOkAt,
+      exchangeError: this._exchangeError,
+      mcpOkAt: this._mcpOkAt,
+      mcpFailedAt: this._pnlFailedAt,
+      // AssistantPanel is a top-level const, so it is not a window property.
+      llm: typeof AssistantPanel !== "undefined" && AssistantPanel.llmHealth ? AssistantPanel.llmHealth(Date.now()) : undefined,
+    }, Date.now());
+    Panels.renderHealth(items);
+  },
+
+  // Announcement impact: analyse each new announcement once, keep the last few.
+  onAnnouncement: function (a) {
+    var self = this;
+    var id = a.announcement_id !== undefined ? String(a.announcement_id) : (a.timestamp || "") + "|" + (a.message || "");
+    if (this.announcements.some(function (e) { return e.id === id; })) return;
+    var entry = { id: id, announcement: a, status: "pending" };
+    this.announcements.unshift(entry);
+    this.announcements = this.announcements.slice(0, CONFIG.ANNOUNCEMENTS_KEPT);
+    Panels.renderAnnouncements(this.announcements);
+    AssistantPanel.analyseAnnouncement(a, this.instrumentInfo, this.instruments).then(function (r) {
+      entry.status = "done"; entry.impact = r.impact; entry.usage = r.usage;
+      Panels.renderAnnouncements(self.announcements);
+    }, function (err) {
+      entry.status = "failed"; entry.error = err && (err.message || err.code) || "LLM error";
+      Panels.renderAnnouncements(self.announcements);
+    });
   },
 
   renderPositions: function (portfolio) {
@@ -477,15 +569,24 @@ const DashboardController = {
       ? this.instruments
       : (portfolio.positions || []).map(function (p) { return p.symbol; });
     var self = this;
+    var now = Date.now();
+    var raw = {};
+    (portfolio.positions || []).forEach(function (p) { raw[p.symbol] = p.unrealized_pnl; });
     var rows = positionRows(symbols, portfolio)
       .map(function (r) {
+        var last = self.prices ? self.prices.last(r.symbol) : null;
+        var ageS = last ? Math.round((now - last.t) / 1000) : null;
+        var ageHtml = ageS === null ? "" : "<small class=\"age" + (ageS > 20 ? " old" : "") + "\" title=\"seconds since the last price event for this instrument\">" + ageS + "s</small>";
+        var prevU = self._prev["pos:" + r.symbol], curU = raw[r.symbol];
+        var flash = typeof prevU === "number" && typeof curU === "number" && prevU !== curU ? (curU > prevU ? " flash-up" : " flash-down") : "";
+        self._prev["pos:" + r.symbol] = curU;
         return (
           "<tr>" +
-          "<td>" + escapeHtml(r.symbol) + "</td>" +
+          "<td>" + escapeHtml(r.symbol) + ageHtml + "</td>" +
           "<td>" + escapeHtml(r.quantity) + "</td>" +
           "<td>" + escapeHtml(r.avg_cost) + "</td>" +
           "<td>" + escapeHtml(r.market_value) + "</td>" +
-          "<td>" + escapeHtml(r.unrealized_pnl) + "</td>" +
+          "<td class=\"" + flash.trim() + "\">" + escapeHtml(r.unrealized_pnl) + "</td>" +
           Panels.sparklineCell(self.prices ? self.prices.samples(r.symbol) : []) +
           "</tr>"
         );
@@ -504,6 +605,7 @@ const DashboardController = {
 
     var byId = {};
     this.orders.forEach(function (o) { byId[o.id] = o; });
+    var strategyOf = this.history.strategies ? this.history.strategies() : {};
     var rows = this.history.entries().slice().reverse().map(function (e) { // newest first on screen
       // Exchange order when it exists; otherwise the bot journal's own copy
       // (a REJECTED or UNKNOWN submit has no exchange order to look up).
@@ -516,14 +618,17 @@ const DashboardController = {
         "<td class=\"mono\">" + escapeHtml(formatSgt(e.at)) + "</td>" +
         "<td>" + escapeHtml(o.symbol) + "</td>" +
         "<td>" + escapeHtml(String(o.side || "").toUpperCase()) + "</td>" +
+        "<td>" + (strategyOf[e.orderId] ? "<span class=\"strategy\">" + escapeHtml(strategyOf[e.orderId]) + "</span>" : "—") + "</td>" +
         "<td class=\"num\">" + escapeHtml(o.quantity) + "</td>" +
         "<td class=\"num\">" + escapeHtml(formatCurrencyOrDash(o.price)) + "</td>" +
+        "<td class=\"num\">" + escapeHtml(remaining === undefined || remaining === null || o.quantity === undefined ? "—" : Math.max(0, o.quantity - remaining)) + "</td>" +
         "<td class=\"num\">" + escapeHtml(remaining === undefined || remaining === null ? "—" : remaining) + "</td>" +
         "<td title=\"" + escapeHtml(title) + "\"><span class=\"order-status " + escapeHtml(e.status.toLowerCase()) + "\">" + escapeHtml(e.status) + (e.code ? " <small>" + escapeHtml(e.code) + "</small>" : "") + "</span></td>" +
+        "<td><button type=\"button\" class=\"btn why\" data-order=\"" + escapeHtml(e.orderId) + "\" data-symbol=\"" + escapeHtml(o.symbol) + "\" title=\"Ask the assistant to explain this order from the bot journal\">Why?</button></td>" +
         "</tr>"
       );
     }).join("");
-    $("#lifecycle-body").html(rows || "<tr><td colspan=\"8\" class=\"empty\">No orders observed this session</td></tr>").removeClass("stale");
+    $("#lifecycle-body").html(rows || "<tr><td colspan=\"11\" class=\"empty\">No orders observed this session</td></tr>").removeClass("stale");
     $("#lifecycle-count").text(this.history.entries().length + " transitions · " + this.orders.length + " orders");
     $("#export-csv").prop("disabled", this.orders.length === 0 && this.history.entries().length === 0);
   },
@@ -613,6 +718,7 @@ const DashboardController = {
   },
 
   setConnectivity: function (online) {
+    this._feedOnline = !!online;
     var $dot = $("#connectivity-dot");
     $dot.removeClass("online offline").addClass(online ? "online" : "offline");
     $("#connectivity-label").text(online ? "ONLINE" : "OFFLINE");

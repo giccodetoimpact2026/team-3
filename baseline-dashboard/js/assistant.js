@@ -129,5 +129,42 @@
     };
   }
 
-  return { TOOLS: TOOLS, MCP_TOOLS: MCP_TOOLS, SYSTEM: SYSTEM, buildRequest: buildRequest, toolUses: toolUses, toolResultMessage: toolResultMessage, finalText: finalText, parseAsOf: parseAsOf, confidence: confidence, briefingRequest: briefingRequest };
+  // Announcement impact (Sophia: "reason across the supply chain, not a
+  // keyword match"). One-shot, cheap model, strict JSON, advisory only.
+  var ANNOUNCEMENT_SYSTEM = "You are a market analyst for a five-instrument simulated exchange. Given a market announcement and the instrument list with sectors, reason across the supply chain (energy costs drive freight; semiconductors, defense and pharma have their own links) and reply with ONLY a JSON object, no prose: {\"affected\":[{\"symbol\":\"...\",\"direction\":\"up|down|neutral\",\"magnitude\":\"low|medium|high\",\"reason\":\"one short clause\"}],\"uncertainty\":\"low|medium|high\",\"rationale\":\"one sentence\"}. Include indirectly affected instruments with their own reason. Keep it compact: at most 5 entries, each reason under 12 words, rationale under 25 words. This is advisory research only: it never places orders and must not claim certainty.";
+
+  function announcementRequest(a, instruments) {
+    a = a || {};
+    var list = (instruments || []).map(function (i) { return i.symbol + " (" + (i.name || "") + ", " + (i.sector || "") + ")"; }).join("; ");
+    return {
+      model: "haiku",
+      max_tokens: 600, // a five-entry verdict is ~300 tokens; headroom so the JSON is never cut off
+      system: ANNOUNCEMENT_SYSTEM,
+      messages: [{ role: "user", content: "ANNOUNCEMENT" + (a.announcement_id !== undefined ? " #" + a.announcement_id : "") + (a.affected_symbol ? " (named ticker: " + a.affected_symbol + ")" : "") + ": " + (a.message || "") + "\nINSTRUMENTS: " + list }],
+    };
+  }
+
+  var DIR = { up: "up", bullish: "up", positive: "up", higher: "up", down: "down", bearish: "down", negative: "down", lower: "down", neutral: "neutral", flat: "neutral", none: "neutral" };
+  function parseImpact(text, symbols) {
+    if (!text) return null;
+    var m = /\{[\s\S]*\}/.exec(String(text));
+    if (!m) return null;
+    var obj;
+    try { obj = JSON.parse(m[0]); } catch (_) { return null; }
+    if (!obj || typeof obj !== "object") return null;
+    var known = {};
+    (symbols || []).forEach(function (s) { known[String(s).toUpperCase()] = true; });
+    var affected = (Array.isArray(obj.affected) ? obj.affected : []).map(function (x) {
+      var sym = String(x && x.symbol || "").toUpperCase();
+      return {
+        symbol: sym,
+        direction: DIR[String(x && x.direction || "").toLowerCase()] || "neutral",
+        magnitude: String(x && x.magnitude || "low").toLowerCase(),
+        reason: String(x && x.reason || ""),
+      };
+    }).filter(function (x) { return !symbols || known[x.symbol]; });
+    return { affected: affected, uncertainty: String(obj.uncertainty || "high").toLowerCase(), rationale: String(obj.rationale || "") };
+  }
+
+  return { TOOLS: TOOLS, announcementRequest: announcementRequest, parseImpact: parseImpact, MCP_TOOLS: MCP_TOOLS, SYSTEM: SYSTEM, buildRequest: buildRequest, toolUses: toolUses, toolResultMessage: toolResultMessage, finalText: finalText, parseAsOf: parseAsOf, confidence: confidence, briefingRequest: briefingRequest };
 });

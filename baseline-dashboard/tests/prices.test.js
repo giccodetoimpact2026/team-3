@@ -118,3 +118,21 @@ test("correlationMatrix: symmetric with a unit diagonal, null where a series is 
   assert.strictEqual(m.matrix[0][1], m.matrix[1][0]);
   assert.strictEqual(m.matrix[0][2], null);
 });
+
+test("forecast: insignificant drift falls back to a random walk around the last price", () => {
+  // Alternating up/down returns: mean drift is ~0 with a large spread, so the t-statistic is tiny.
+  const s = series(80, (i) => (i % 2 ? 10100 : 10000));
+  const f = forecast(s, { minSamples: 20, horizonMs: 60000 });
+  assert.strictEqual(f.driftUsed, false);
+  assert.strictEqual(f.projected, f.last);
+  assert.ok(/random walk/i.test(f.method));
+  assert.ok(f.lower < f.last && f.upper > f.last);
+});
+
+test("forecast: a steady trend keeps its drift and reports the change in percent", () => {
+  const f = forecast(series(60, (i) => Math.round(10000 * Math.pow(1.001, i))), { minSamples: 20, horizonMs: 60000 });
+  assert.strictEqual(f.driftUsed, true);
+  assert.ok(f.changePct > 0);
+  assert.ok(Math.abs(f.changePct - ((f.projected - f.last) / f.last) * 100) < 1e-9);
+  assert.ok(typeof f.bandPct === "number" && f.bandPct > 0);
+});
