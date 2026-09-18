@@ -5,6 +5,9 @@ to the SSE price feed, gates on session state, and submits limit orders through
 the REST client. Single process, stdout logging.
 """
 import os
+import signal
+import sys
+import threading
 import time
 import uuid
 
@@ -15,13 +18,27 @@ from exchange.feed import SSEFeed
 from risk.limits import RiskLimits
 from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
+from utils.event_worker import EventWorker
 from utils.logger import log
 
 
 def load_config():
     path = os.path.join(os.path.dirname(__file__), "config.yaml")
     with open(path) as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+
+    exchange = config.setdefault("exchange", {})
+    exchange["base_url"] = os.environ.get(
+        "EXCHANGE_BASE_URL", exchange.get("base_url", "")
+    ).rstrip("/")
+    exchange["api_key"] = os.environ.get(
+        "EXCHANGE_API_KEY", exchange.get("api_key", "")
+    )
+    if not exchange["base_url"]:
+        raise ValueError("exchange base URL is required")
+    if not exchange["api_key"] or exchange["api_key"] == "REPLACE_WITH_TEAM_API_KEY":
+        raise ValueError("set EXCHANGE_API_KEY; never commit the team API key")
+    return config
 
 
 def build_strategy(symbol, strat_cfg):
@@ -30,6 +47,57 @@ def build_strategy(symbol, strat_cfg):
     if strat_cfg["type"] == "mean_reversion":
         return MeanReversionStrategy(symbol, strat_cfg)
     raise ValueError(f"unknown strategy type: {strat_cfg['type']}")
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle
+# ---------------------------------------------------------------------------
+
+RUNNING = "RUNNING"
+QUIESCING = "QUIESCING"
+STOPPED = "STOPPED"
+
+
+def halt(client, lifecycle, shutdown_event):
+    """Block new order intents and cancel all open orders.
+
+    Reusable by signal handlers and a future kill-switch command.
+    """
+    if lifecycle["value"] == STOPPED:
+        return
+
+    lifecycle["value"] = QUIESCING
+    log("lifecycle: QUIESCING — blocking new intents")
+
+    unknown = 0
+    try:
+        orders = client.get_orders()
+        open_orders = [
+            o for o in orders
+            if o.get("status") in ("OPEN", "PARTIALLY_FILLED")
+        ]
+        if not open_orders:
+            log("no open orders to cancel")
+        for order in open_orders:
+            oid = order["id"]
+            try:
+                client.cancel_order(oid)
+                log(f"cancelled order {oid}")
+            except Exception as exc:
+                log(f"cancel {oid} failed (may already be filled/cancelled): {exc}")
+                unknown += 1
+    except Exception as exc:
+        log(f"failed to fetch orders for cancellation: {exc}")
+        unknown += 1
+
+    lifecycle["value"] = STOPPED
+    shutdown_event.set()
+
+    if unknown:
+        log(f"lifecycle: STOPPED — {unknown} order(s) unresolved")
+    else:
+        log("lifecycle: STOPPED — all orders resolved")
+    return unknown
 
 
 def main():
@@ -56,44 +124,89 @@ def main():
     for sym in strategies:
         log(f"{sym} starting position: {client.get_positions(sym)}")
 
-    session_open = {"value": False}
+    # --- shared state -------------------------------------------------------
+    state = {
+        "session_open": False,
+        "session_id": None,
+    }
+    lifecycle = {"value": RUNNING}
+    shutdown_event = threading.Event()
+
+    # --- P0-12: session bootstrap -------------------------------------------
+    try:
+        session_data = client.get_session()
+        if session_data is not None:
+            status = session_data.get("status")
+            state["session_id"] = session_data.get("id")
+            state["session_open"] = status == "running"
+            log(f"session bootstrap: status={status}, id={state['session_id']}")
+        else:
+            log("session bootstrap: no active session yet")
+    except Exception as exc:
+        log(f"session bootstrap failed (will rely on SSE): {exc}")
+
+    # --- event handlers -----------------------------------------------------
 
     def on_session(payload):
-        session_open["value"] = payload.get("status") == "open"
-        log(f"session: {payload.get('status')}")
+        new_status = payload.get("status")
+
+        # SSE session event uses open/halted/closed; map to session_open bool.
+        state["session_open"] = new_status == "open"
+        log(f"session: {new_status}")
+
+        # P0-13: detect session boundary — clear stale state on ID change.
+        new_id = payload.get("id")
+        if new_id and new_id != state["session_id"]:
+            log(f"session boundary: {state['session_id']} -> {new_id} — resetting strategies")
+            for strat in strategies.values():
+                strat.prices.clear()
+            state["session_id"] = new_id
 
     def on_price(payload):
+        if lifecycle["value"] != RUNNING:
+            return
+
         symbol = payload.get("symbol")
         strat = strategies.get(symbol)
         if strat is None:
             return
         strat.on_price(payload["last_price"])
-        if not session_open["value"]:
+        if not state["session_open"]:
             return
         position = client.get_positions(symbol)
-        signal = strat.signal(position)
-        if signal is None:
+        signal_obj = strat.signal(position)
+        if signal_obj is None:
             return
-        if signal.side == "buy" and not risk.allows_buy(symbol, position, signal.quantity):
+        if signal_obj.side == "buy" and not risk.allows_buy(symbol, position, signal_obj.quantity):
             return
         client.submit_limit_order(
-            symbol, signal.side, signal.quantity, signal.limit_price, str(uuid.uuid4()))
-        log(f"submitted {signal} for {symbol}")
+            symbol, signal_obj.side, signal_obj.quantity, signal_obj.limit_price, str(uuid.uuid4()))
+        log(f"submitted {signal_obj} for {symbol}")
 
+    # --- signal handlers (P0-11, P0-14) -------------------------------------
+
+    def _shutdown_handler(signum, frame):
+        sig_name = signal.Signals(signum).name
+        log(f"received {sig_name} — initiating shutdown")
+        halt(client, lifecycle, shutdown_event)
+
+    signal.signal(signal.SIGINT, _shutdown_handler)
+    signal.signal(signal.SIGTERM, _shutdown_handler)
+
+    # --- start feed ---------------------------------------------------------
     feed = SSEFeed(config["exchange"]["base_url"], config["exchange"]["api_key"])
-    feed.on("session", on_session)
-    feed.on("price", on_price)
+    worker = EventWorker({"session": on_session, "price": on_price})
+    worker.start()
+    feed.on("session", lambda payload: worker.submit("session", payload))
+    feed.on("price", lambda payload: worker.submit("price", payload))
     feed.start()
     log("bot started")
 
-    # Keep the process alive. NOTE: there is no graceful shutdown — a Ctrl-C or
-    # kill signal exits without cancelling resting orders, which stay on the
-    # exchange. A SIGTERM handler that cancels open orders was never finished.
-    try:
-        while True:
-            time.sleep(1)
-    except Exception:
-        pass
+    # Wait for shutdown signal instead of sleeping in a bare loop.
+    shutdown_event.wait()
+
+    exit_code = 0 if lifecycle["value"] == STOPPED else 1
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

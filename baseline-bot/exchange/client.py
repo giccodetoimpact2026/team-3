@@ -43,7 +43,7 @@ class ExchangeClient:
         """Held quantity for a symbol (shares)."""
         portfolio = self.get_portfolio()
         by_symbol = {p["symbol"]: p["quantity"] for p in portfolio.get("positions", [])}
-        return by_symbol[symbol]
+        return by_symbol.get(symbol, 0)
 
     def get_order(self, order_id: str):
         """Look up one order by the exchange's order id.
@@ -58,6 +58,12 @@ class ExchangeClient:
 
     def get_orders(self):
         r = self.session.get(f"{self.base_url}/orders", timeout=5)
+        r.raise_for_status()
+        return _data(r.json())
+
+    def get_session(self):
+        """Current trading-session state, or None before the first window."""
+        r = self.session.get(f"{self.base_url}/session", timeout=5)
         r.raise_for_status()
         return _data(r.json())
 

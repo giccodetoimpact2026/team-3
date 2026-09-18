@@ -23,7 +23,10 @@ inherited bugs — the handover notes point at them.
 
 ```bash
 pip install -r requirements.txt
-# Edit config.yaml: set exchange.base_url (sandbox or live) and your team api_key.
+# Keep the team key out of config.yaml and source control.
+export EXCHANGE_API_KEY="your-team-key"
+# Optional: defaults to https://api.codetoimpact.sg.
+export EXCHANGE_BASE_URL="https://api.codetoimpact.sg"
 python main.py
 ```
 
