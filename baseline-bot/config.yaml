@@ -66,12 +66,21 @@ strategy:
   DRFT:
     type: mean_reversion
     # "It spikes on volume then drops" (Ethan, junior trader) — a spike-and-
-    # revert profile, so buy the trough rather than chase the spike. The band is
-    # wide because a thin name "will look more volatile per sample even when
-    # nothing is happening" (James p.3).
+    # revert profile, so buy the trough and sell into the spike.
+    #
+    # ASYMMETRIC BANDS, and they have to be. A single 0.015 band placed NOTHING
+    # here, measured: the moves are upward, so price rarely sits 1.5% *below*
+    # its own mean, the buy leg never fired, and long-only means the sell leg
+    # cannot fire without a prior buy. 0 buys -> no position -> 0 sells.
+    #
+    # Buy the small frequent dips, sell into the large rare spikes. The sell
+    # band stays wider than the buy band so a position is only released on a
+    # real spike, not on noise.
     lookback_samples: 15
-    deviation_threshold: 0.015
-    trade_quantity: 20
+    deviation_threshold: 0.006      # fallback for either side if unset
+    buy_deviation_threshold: 0.006
+    sell_deviation_threshold: 0.012
+    trade_quantity: 10
     limit_offset_bps: 5
   AXON:
     type: pairs_follow
@@ -140,8 +149,14 @@ regime:
   # happening, so don't share thresholds across instruments."
   per_symbol:
     DRFT:
-      COMPRESSION: 0.0           # thin book: no edge in a quiet market
-      NEUTRAL: 0.0               # only trade this name on a real signal
+      # Reduced, not zeroed. These were 0.0 when DRFT was effectively inert;
+      # now that it trades, zeroing COMPRESSION and NEUTRAL would suppress it
+      # in exactly the quiet conditions between spikes where it accumulates
+      # its position cheaply. The tiny clip, the 100-share cap and the 2% stop
+      # are what make that safe — not refusing to trade.
+      COMPRESSION: 0.25
+      NEUTRAL: 0.25
+      SHOCK: 0.0                 # a thin book in a shock is the one to avoid
 
 risk:
   # --- position caps ------------------------------------------------------
@@ -247,6 +262,37 @@ news:
     CRVX: 0.8
     DRFT: 0.25
     AXON: 0.6
+
+  # --- LLM sentiment analysis (S1) ----------------------------------------
+  # Two tiers. The keyword classifier above is tier 0: coarse but instant, and
+  # it has to be, because the event worker is a single thread and an LLM round
+  # trip takes seconds. This is tier 1 — it runs on its own thread and replaces
+  # the provisional bias with per-symbol views that reason across the supply
+  # chain, which is what Sophia Tan actually asked for: "I don't want a keyword
+  # match on the named ticker ... sanctions on freight hit AXON directly but
+  # ripple to NOVA and CRVX for different reasons."
+  #
+  # Authentication is the SAME secret as the exchange — the LLM service has no
+  # separate key — so it comes from EXCHANGE_API_KEY and is never written here.
+  #
+  # Budget: the grant is ~$25 USD and a top-up is recorded and may carry a
+  # scoring penalty. One call per announcement_id, memoised, plus the hard
+  # ceiling below. At roughly $0.003 a call on sonnet, 60 calls is under $0.20.
+  llm:
+    enabled: true
+    base_url: "https://llm.codetoimpact.sg"
+    # The service's own reference names sonnet the default and asks for the
+    # smallest model that does the job. The task is a short supply-chain
+    # inference at single-digit calls per window, so cost is not binding and
+    # sonnet is the sensible middle. "haiku" is cheaper, "opus" reasons harder.
+    model: "sonnet"
+    max_tokens: 1024
+    timeout_seconds: 20
+    # Views below this confidence are discarded rather than traded. A
+    # second-order ripple should score lower than a direct hit, so this is the
+    # line between "act on it" and "note it".
+    min_confidence: 0.6
+    max_calls_per_session: 60
 
 control:
   # Local kill-switch endpoint consumed by the dashboard (via its /bot/* proxy).
