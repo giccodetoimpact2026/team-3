@@ -6,10 +6,15 @@ localhost only and carries no authentication: the dashboard dev server
 
     GET  /status  -> {"state": "RUNNING", "session_id": ..., "session_open": bool}
     POST /halt    -> {"state": "STOPPED", "unresolved": 0}
+    POST /order   -> {"ok": true, "order_id": ..., ...}  (manual override)
 
 `/halt` runs the same halt() path as SIGINT/SIGTERM: block new intents,
 cancel every open order, stop. Calling it twice is safe; the second call
 reports the current state without cancelling anything.
+
+`/order` is the desk overriding the bot: {"symbol", "side", "quantity"} places
+a marketable limit through OrderManager's manual path. It answers 200 with the
+placed order or 409 with a `reason` the dashboard shows the operator.
 """
 import json
 import threading
@@ -24,13 +29,17 @@ class ControlServer:
     status_fn() -> dict         current lifecycle snapshot
     halt_fn()   -> int | None   run the halt path; returns unresolved count
     news_engine                 optional NewsEngine for live config reads/writes
+    order_fn(symbol, side, quantity) -> dict
+                                optional manual-override placer; returns a dict
+                                with "ok" and either the order or a "reason"
     """
 
     def __init__(self, status_fn, halt_fn, host="127.0.0.1", port=8092,
-                 news_engine=None):
+                 news_engine=None, order_fn=None):
         self._status_fn = status_fn
         self._halt_fn = halt_fn
         self._news_engine = news_engine
+        self._order_fn = order_fn
         self._halt_lock = threading.Lock()
         self._server = ThreadingHTTPServer((host, port), self._handler_class())
         self._server.daemon_threads = True
@@ -81,10 +90,32 @@ class ControlServer:
                     return self._send(200, outer._news_engine.get_config())
                 self._send(404, {"error": "not found"})
 
+            def _read_json(self):
+                length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(length) if length else b"{}"
+                return json.loads(body)
+
             def do_POST(self):
                 if self.path == "/halt":
                     log("control: halt requested by dashboard")
                     return self._send(200, outer._halt())
+                if self.path == "/order" and outer._order_fn:
+                    try:
+                        req = self._read_json()
+                    except (json.JSONDecodeError, ValueError):
+                        return self._send(400, {"error": "invalid JSON"})
+                    symbol = req.get("symbol")
+                    side = str(req.get("side", "")).lower()
+                    try:
+                        quantity = int(req.get("quantity"))
+                    except (TypeError, ValueError):
+                        return self._send(400, {"error": "quantity must be an integer"})
+                    if not symbol or side not in ("buy", "sell") or quantity <= 0:
+                        return self._send(400, {"error": "symbol, side (buy/sell) "
+                                                "and a positive quantity are required"})
+                    log(f"control: manual {side} {quantity} {symbol} requested by dashboard")
+                    result = outer._order_fn(symbol, side, quantity)
+                    return self._send(200 if result.get("ok") else 409, result)
                 if self.path == "/news/config" and outer._news_engine:
                     length = int(self.headers.get("Content-Length", 0))
                     body = self.rfile.read(length) if length else b"{}"

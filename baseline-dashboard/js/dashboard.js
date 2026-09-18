@@ -34,6 +34,7 @@ const DashboardController = {
   chartBucket: 60000,
   _newsConfig: null,
   _pendingParam: null, // staged param change awaiting confirm
+  _pendingOrder: null, // staged manual buy/sell awaiting confirm
   _timers: { portfolio: null, all: null },
   _lastAt: { portfolio: 0, all: 0 },
   _chartAt: 0,
@@ -51,6 +52,7 @@ const DashboardController = {
     $("#kill-switch").on("click", this.haltBot.bind(this));
     this.bindChartControls();
     this.bindNewsControls();
+    this.bindManualControls();
     this.loadNewsConfig();
     this.pollBotStatus();
     setInterval(this.pollBotStatus.bind(this), CONFIG.BOT_STATUS_INTERVAL_MS);
@@ -125,6 +127,7 @@ const DashboardController = {
         self.populateChartSymbols();
         self.renderStrategyScaffold();
         self.renderRiskControlsScaffold();
+        self.renderManualControls();
         return self.instruments;
       },
       function () { return self.instruments; }
@@ -184,6 +187,7 @@ const DashboardController = {
     var buf = this.priceBuf[p.symbol] || (this.priceBuf[p.symbol] = []);
     buf.push({ t: this.msOf(p.timestamp), price: p.last_price });
     if (buf.length > this.BUF_CAP) buf.shift();
+    this.updateManualPrice(p.symbol, p.last_price);
     if (Tabs.current() === "execution" && p.symbol === this.chartSymbol) {
       var now = Date.now();
       if (now - this._chartAt > 1000) { this._chartAt = now; this.renderChart(); }
@@ -669,6 +673,84 @@ const DashboardController = {
       );
     }).join("");
     $("#risk-controls-body").html(html || "<tr><td colspan=\"4\" class=\"empty\">No instruments</td></tr>");
+  },
+
+  // --- Manual override: per-instrument buy / sell -------------------------
+
+  // One row per instrument: a live price, a quantity box and Buy/Sell buttons.
+  // The bot decides the (marketable) limit price; the desk decides size.
+  renderManualControls: function () {
+    var html = this.instruments.map(function (s) {
+      var es = escapeHtml(s);
+      return (
+        "<tr data-symbol=\"" + es + "\">" +
+        "<td>" + es + "</td>" +
+        "<td class=\"num manual-price\" data-symbol=\"" + es + "\">—</td>" +
+        "<td><input type=\"number\" class=\"manual-qty\" data-symbol=\"" + es + "\" min=\"1\" step=\"1\" placeholder=\"shares\" /></td>" +
+        "<td class=\"manual-actions\">" +
+        "<button class=\"btn manual-buy\" type=\"button\" data-symbol=\"" + es + "\">Buy</button> " +
+        "<button class=\"btn ghost manual-sell\" type=\"button\" data-symbol=\"" + es + "\">Sell</button>" +
+        "</td></tr>"
+      );
+    }).join("");
+    $("#manual-body").html(html || "<tr><td colspan=\"4\" class=\"empty\">No instruments</td></tr>");
+  },
+
+  // Keep the live-price column current from the SSE feed (cents -> currency).
+  updateManualPrice: function (symbol, priceCents) {
+    if (priceCents === undefined || priceCents === null) return;
+    $("#manual-body .manual-price[data-symbol='" + symbol + "']").text(formatCurrency(priceCents));
+  },
+
+  // Priya's one-click-to-propose, one-to-confirm rule (same as the news
+  // params): every manual order is staged and only sent after an explicit
+  // Confirm, so an override with no auth still can't fire on a single misclick.
+  bindManualControls: function () {
+    var self = this;
+
+    function stage(symbol, side) {
+      var qty = parseInt($("#manual-body .manual-qty[data-symbol='" + symbol + "']").val(), 10);
+      if (!qty || qty <= 0) {
+        $("#manual-result").addClass("error").text("Enter a positive quantity for " + symbol + " first.");
+        return;
+      }
+      self._pendingOrder = { symbol: symbol, side: side, quantity: qty };
+      $("#manual-result").removeClass("error").text("");
+      $("#manual-confirm-text").text(side.toUpperCase() + " " + qty + " " + symbol + " at market now?");
+      $("#manual-confirm").show();
+    }
+
+    $(document).on("click", ".manual-buy", function () { stage($(this).data("symbol"), "buy"); });
+    $(document).on("click", ".manual-sell", function () { stage($(this).data("symbol"), "sell"); });
+
+    $("#manual-confirm-no").on("click", function () {
+      self._pendingOrder = null;
+      $("#manual-confirm").hide();
+    });
+
+    $("#manual-confirm-yes").on("click", function () {
+      var order = self._pendingOrder;
+      if (!order) return;
+      self._pendingOrder = null;
+      $("#manual-confirm").hide();
+      $("#manual-result").removeClass("error").text("Placing " + order.side + " " + order.quantity + " " + order.symbol + "…");
+      BotAPI.submitOrder(order.symbol, order.side, order.quantity)
+        .then(function (resp) {
+          var msg = order.side.toUpperCase() + " " + resp.quantity + " " + order.symbol +
+            " placed" + (resp.filled ? " (filled " + resp.filled + ")" : "") +
+            (resp.order_id ? " · " + String(resp.order_id).slice(0, 8) : "");
+          $("#manual-result").removeClass("error").text(msg);
+          self.logAudit("MANUAL " + order.side.toUpperCase(), resp.quantity + " " + order.symbol +
+            (resp.order_id ? " (" + String(resp.order_id).slice(0, 8) + ")" : ""));
+          self.requestRefresh("all");
+        })
+        .fail(function (xhr) {
+          var body = xhr && xhr.responseJSON;
+          var reason = (body && (body.reason || body.error)) || (xhr && xhr.statusText) || "no response";
+          $("#manual-result").addClass("error").text("Order refused: " + reason);
+          self.logAudit("MANUAL " + order.side.toUpperCase(), order.quantity + " " + order.symbol + " REFUSED: " + reason);
+        });
+    });
   },
 
   // --- P&L (Overview) -----------------------------------------------------

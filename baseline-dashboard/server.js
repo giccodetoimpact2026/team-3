@@ -76,8 +76,15 @@ function proxy(req, res) {
 // A bot that is not running answers 502 so the page can show OFFLINE.
 function proxyBot(req, res) {
   const upstreamPath = req.url.replace(/^\/bot/, "") || "/";
+  // Forward the body framing headers so a POST body actually reaches the bot.
+  // Without content-length, piping sends the body chunked, which the bot's
+  // stdlib HTTP handler (it reads Content-Length) sees as empty — silently
+  // dropping the JSON for /order and /news/config.
+  const headers = { accept: "application/json" };
+  if (req.headers["content-type"]) headers["content-type"] = req.headers["content-type"];
+  if (req.headers["content-length"]) headers["content-length"] = req.headers["content-length"];
   const up = http.request(
-    { host: BOT.hostname, port: BOT.port || 80, path: upstreamPath, method: req.method, headers: { accept: "application/json" } },
+    { host: BOT.hostname, port: BOT.port || 80, path: upstreamPath, method: req.method, headers: headers },
     function (upRes) {
       res.writeHead(upRes.statusCode, { "content-type": upRes.headers["content-type"] || "application/json", "cache-control": "no-store" });
       upRes.pipe(res);

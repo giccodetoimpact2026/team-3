@@ -282,13 +282,37 @@
           <div id="corr-matrix" class="corr-matrix"></div>
         </section>
 
+        <section class="manual-override">
+          <div class="section-head">
+            <h2>Manual override</h2>
+            <span class="section-meta">Overrides the bot: places a marketable limit through the bot's OrderManager</span>
+          </div>
+          <div class="scaffold-note">
+            When the tape moves, take control per instrument: set a quantity and
+            <strong>Buy</strong> into a fall or <strong>Sell</strong> a large amount
+            into a spike. The bot prices a marketable limit off the live mark so it
+            fills now; a sell is capped at the shares you actually hold. Each click
+            asks for a one-step confirm before it is sent.
+          </div>
+          <table>
+            <thead><tr><th>Symbol</th><th>Live price</th><th>Quantity</th><th>Action</th></tr></thead>
+            <tbody id="manual-body"></tbody>
+          </table>
+          <div id="manual-confirm" class="param-confirm" style="display: none">
+            <span id="manual-confirm-text"></span>
+            <button id="manual-confirm-yes" class="btn" type="button">Confirm</button>
+            <button id="manual-confirm-no" class="btn ghost" type="button">Cancel</button>
+          </div>
+          <div id="manual-result" class="source"></div>
+        </section>
+
         <section class="risk-controls">
           <div class="scaffold-note">
             Per-instrument pause/resume and editable stop-losses need bot control
-            endpoints that do not exist yet (only <code>GET /bot/status</code> and
-            <code>POST /bot/halt</code> are wired). Stop-losses currently live in
-            <code>baseline-bot/config.yaml</code>; expose them over <code>/bot</code>
-            to make this section live.
+            endpoints that do not exist yet (only <code>GET /bot/status</code>,
+            <code>POST /bot/halt</code> and <code>POST /bot/order</code> are wired).
+            Stop-losses currently live in <code>baseline-bot/config.yaml</code>;
+            expose them over <code>/bot</code> to make this section live.
           </div>
           <div class="section-head"><h2>Per-instrument controls</h2></div>
           <table>

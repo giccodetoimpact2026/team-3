@@ -504,6 +504,82 @@ class OrderManager:
                     f"holding key {key} for reconciliation")
         return result
 
+    def submit_manual(self, symbol: str, side: str, quantity: int,
+                      price: int) -> dict:
+        """Human override: place an order outside the automated decision gates.
+
+        This is the desk taking control, not the strategy. It deliberately
+        bypasses the gates that exist to stop the *bot* from over-trading — the
+        block flag, the per-symbol cooldown, the one-active-order-per-symbol
+        limit and the position / correlated-group caps — because the human is
+        the one deciding the size here.
+
+        It still keeps the checks that guard against a *broken* order rather
+        than a large one: positive size and price, no submit while an earlier
+        order for this symbol is unreconciled (we could otherwise double up on
+        an order whose fate we don't know), sells clamped to what we actually
+        hold (so "sell a lot" never becomes a 400 INSUFFICIENT_POSITION), and
+        the order-rate limiter (a shared, exchange-enforced budget).
+
+        Returns a plain dict the control endpoint serialises straight to the
+        dashboard: {"ok": True, order_id, status, filled, quantity, ...} or
+        {"ok": False, "reason": "..."}.
+        """
+        side = str(side).lower()
+        if side not in ("buy", "sell"):
+            return {"ok": False, "reason": f"invalid side {side!r}"}
+        if quantity <= 0 or price <= 0:
+            return {"ok": False, "reason": "quantity and price must be positive"}
+
+        with self._lock:
+            if self._symbol_unresolved(symbol):
+                return {"ok": False, "reason": "an earlier order for this symbol "
+                        "is still unreconciled; wait a moment and retry"}
+
+        self.refresh_positions()
+
+        with self._lock:
+            if side == "sell":
+                avail = self.available_to_sell(symbol)
+                if avail <= 0:
+                    return {"ok": False, "reason": "no sellable shares held"}
+                if quantity > avail:
+                    # "Sell a large amount" caps at everything we can sell.
+                    log(f"{symbol}: manual sell {quantity} clamped to held {avail}")
+                    quantity = avail
+            if self._order_limiter and not self._order_limiter.acquire():
+                return {"ok": False, "reason": "order rate limit reached; retry shortly"}
+
+            key = self._next_key(symbol, f"manual-{side}")
+            self._unknown[key] = UnknownIntent(key, symbol, side, quantity, price,
+                                               self._clock())
+
+        result = self._client.submit_limit_order(symbol, side, quantity, price, key)
+        self._observe_orders(result)
+
+        with self._lock:
+            if result.acknowledged:
+                self._unknown.pop(key, None)
+                self._last_submit[symbol] = self._clock()
+                self._record_ack(result, symbol, side, quantity, price, key)
+            elif result.landed_nothing:
+                self._unknown.pop(key, None)
+                log(f"{symbol} manual {side} {quantity}@{price} not placed: "
+                    f"{result.outcome.value} {result.code}")
+            else:
+                log(f"{symbol} manual {side} {quantity}@{price} UNKNOWN "
+                    f"({result.code}); holding key {key} for reconciliation")
+
+        if result.acknowledged:
+            return {"ok": True, "symbol": symbol, "side": side, "quantity": quantity,
+                    "price": price, "order_id": result.order_id,
+                    "status": result.status, "filled": result.filled_qty}
+        if result.landed_nothing:
+            return {"ok": False, "reason": f"exchange rejected the order "
+                    f"({result.outcome.value} {result.code})"}
+        return {"ok": False, "reason": f"order status unknown ({result.code}); "
+                "the bot is reconciling — check the order log before retrying"}
+
     def _record_ack(self, result, symbol, side, quantity, price, key) -> None:
         if result.filled_qty:
             self._apply_fill(symbol, side, result.filled_qty)
