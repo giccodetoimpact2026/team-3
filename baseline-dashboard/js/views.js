@@ -21,31 +21,31 @@
       id: "executive",
       label: "Executive",
       audience: "Deputy COO, CIO: did the bot make money, how much, which instruments, was it stable",
-      sections: ["announcements", "cards", "heatmap", "briefing", "pnl"],
+      sections: ["announcements", "cards", "heatmap", "briefing", "pnl", "drawdown"],
     },
     {
       id: "trader",
       label: "Trader",
       audience: "Senior traders: chart with our fills and the forecast, positions, fill rates, order counters",
-      sections: ["announcements", "cards", "ops-strip", "chart", "open-orders", "positions", "fillrate", "pnl"],
+      sections: ["announcements", "cards", "ops-strip", "chart", "open-orders", "positions", "fillrate", "pnl", "strategy-state"],
     },
     {
       id: "risk",
       label: "Risk",
       audience: "Deputy CIO, risk desk, PM: alerts, exposure against caps, correlation, bot guards",
-      sections: ["announcements", "alerts", "risk-radar", "open-orders", "correlation", "guards"],
+      sections: ["announcements", "alerts", "risk-radar", "open-orders", "correlation", "guards", "drawdown", "params"],
     },
     {
       id: "analyst",
       label: "Analyst",
       audience: "Investment analyst: forecast with confidence, trading performance breakdown",
-      sections: ["announcements", "forecast", "performance", "pnl"],
+      sections: ["announcements", "forecast", "performance", "pnl", "strategy-state"],
     },
     {
       id: "ops",
       label: "Ops",
       audience: "Trade operations: session summary, counters, order lifecycle and CSV export",
-      sections: ["session-summary", "ops-strip", "open-orders", "lifecycle"],
+      sections: ["session-summary", "ops-strip", "open-orders", "lifecycle", "audit"],
     },
   ];
   var DEFAULT_VIEW = VIEWS[0].id;

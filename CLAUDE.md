@@ -29,6 +29,7 @@ and verified the page in a browser against the sandbox exchange with the MCP ser
 running, including forced feed and MCP failures. No LLM feature is part of the dashboard
 yet; the conversational panel remains open work and must use the organizer LLM service.
 
+<<<<<<< HEAD
 ## Heartbeat, order journal and lifecycle hardening
 
 Implemented with Claude Code from `team-execution-plan.md` (P1 H2 heartbeat and
@@ -39,3 +40,20 @@ burst throttle in the order manager, the control routes, the dashboard view and
 history changes and their tests. Bot and dashboard unit suites pass; a bot smoke run
 against the sandbox exchange exercised `/status`, `/orders` and `/halt`. Human review
 of the halt ordering and the watchdog thresholds remains required.
+=======
+## Crash-buy strategy increment
+
+Implemented with Claude (Cowork) from the team's request to buy aggressively into a
+sharp sell-off, using `team-11-analysis.md` (the 13:42 CRVX crash and V-recovery) and
+James Wee's page-2 falling-knife warning as inputs. `baseline-bot/strategies/crash_buy.py`
+opens an "episode" when price falls `crash_drop_pct` off the lookback high, ladders in
+with escalating tranches (confirmation wait, tranche cap, abandon threshold), and sells
+once `recovery_fraction` of the drop is reclaimed. It places no stop of its own and
+relies on `risk.exits`. Registered as `type: crash_buy` in `main.py` and as the
+`crash_buy` regime family (the only family whose SHOCK multiplier is 1.0). It is NOT
+assigned to any instrument in `config.yaml` — a commented CRVX block shows the starting
+parameters. 26 unit tests in `tests/test_crash_buy.py`; verified only on synthetic
+paths, never against the sandbox. Human review of parameters, the news-engine
+interaction (a bearish bias suppresses buys) and position caps is required before it
+trades live.
+>>>>>>> origin/main

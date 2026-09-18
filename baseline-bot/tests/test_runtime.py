@@ -53,6 +53,83 @@ def test_config_lookback_and_environment(monkeypatch):
     assert c["exchange"] == {"base_url": "http://test", "api_key": "test-key"}
 
 
+def test_observation_never_submits_or_cancels(client, config):
+    bot, s = ready_bot(client, config)
+    bot.evaluate(s)
+    bot.shutdown()
+    client.submit_limit_order.assert_not_called()
+    client.cancel_order.assert_not_called()
+
+
+def test_live_blocked_by_default(client, config):
+    client.get_session.return_value["mode"] = "live"
+    bot, s = ready_bot(client, config, trade=True)
+    bot.evaluate(s)
+    client.submit_limit_order.assert_not_called()
+
+
+def test_resting_order_prevents_stacking(client, config):
+    client.get_orders.return_value = [{"symbol": "NOVA", "status": "OPEN"}]
+    bot, s = ready_bot(client, config, trade=True)
+    bot.evaluate(s)
+    client.submit_limit_order.assert_not_called()
+
+
+def test_position_cap(client, config):
+    # Already at the configured primary cap: any additional buy must be blocked.
+    # Derived from config so this keeps biting when the cap is retuned (a fixed
+    # 500 passed vacuously once max_position_primary was raised to 4000).
+    client.get_positions.return_value = config["risk"]["max_position_primary"]
+    bot, s = ready_bot(client, config, trade=True)
+    bot.evaluate(s)
+    client.submit_limit_order.assert_not_called()
+
+
+def test_unknown_submit_blocks_until_reconciled(client, config):
+    bot, s = ready_bot(client, config, trade=True)
+    client.submit_limit_order.side_effect = requests.Timeout()
+    with pytest.raises(requests.Timeout):
+        bot.evaluate(s)
+    key = bot.unknown_key
+    assert key
+    bot.evaluate(s)
+    assert client.submit_limit_order.call_count == 1
+    client.get_orders.return_value = [
+        {"id": "o1", "idempotency_key": key, "symbol": "NOVA", "status": "OPEN"}
+    ]
+    bot.evaluate(s)
+    assert bot.unknown_key is None
+    assert client.submit_limit_order.call_count == 1
+
+
+def test_new_window_resets_all_history(client, config):
+    bot, s = ready_bot(client, config, trade=True)
+    client.get_session.return_value["id"] = "window-2"
+    bot.evaluate(s)
+    assert all(not item.prices for item in bot.strategies.values())
+    client.submit_limit_order.assert_not_called()
+
+
+def test_shutdown_cancels_and_checks(client, config, monkeypatch):
+    monkeypatch.setattr("main.time.sleep", lambda _: None)
+    client.get_orders.side_effect = [
+        [{"id": "o1", "status": "PARTIALLY_FILLED"}, {"id": "o2", "status": "FILLED"}],
+        [],
+    ]
+    bot = Bot(client, config, trade=True)
+    assert bot.shutdown()
+    client.cancel_order.assert_called_once_with("o1")
+    assert bot.stopping.is_set()
+
+
+def test_each_instrument_gets_evaluated(client, config):
+    bot = Bot(client, config)
+    bot.evaluate = Mock()
+    bot.on_price({"symbol": "NOVA", "last_price": 10000})
+    bot.on_price({"symbol": "ELXR", "last_price": 10000})
+    assert bot.evaluate.call_count == 2
+
+
 def test_reconnect_preserves_cursor_on_snapshot(monkeypatch):
     feed = SSEFeed("http://test", "test-key")
     response = Mock()

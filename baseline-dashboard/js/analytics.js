@@ -153,7 +153,7 @@
   function performanceRows(trades, positions, symbols) {
     var basis = Trades.startingBasis(positions, trades);
     var per = {};
-    (symbols || []).forEach(function (s) { per[s] = { fills: 0, wins: 0, losses: 0, sumWin: 0, sumLoss: 0 }; });
+    (symbols || []).forEach(function (s) { per[s] = { fills: 0, wins: 0, losses: 0, sumWin: 0, sumLoss: 0, pnls: [] }; });
     chronological(trades).forEach(function (t) {
       var r = per[t.symbol];
       var b = basis[t.symbol] || (basis[t.symbol] = { quantity: 0, avg_cost: 0 });
@@ -168,6 +168,7 @@
       b.quantity -= t.quantity;
       if (b.quantity <= 0) { b.quantity = 0; b.avg_cost = 0; }
       if (!r) return;
+      r.pnls.push(pnl);
       if (pnl > 0) { r.wins++; r.sumWin += pnl; }
       else if (pnl < 0) { r.losses++; r.sumLoss += pnl; }
     });
@@ -184,6 +185,7 @@
         avgLoss: r.losses ? Math.round(r.sumLoss / r.losses) : null,
         profitFactor: r.sumLoss < 0 ? (r.sumWin / -r.sumLoss).toFixed(2) : r.sumWin > 0 ? "∞" : DASH,
         realized: r.sumWin + r.sumLoss,
+        sharpe: sharpe(r.pnls),
       };
     });
   }
@@ -304,5 +306,91 @@
     return "No price events for " + fmtSpan(s) + " (last at " + at + ") while the session reads " + (st ? st.toUpperCase() : "unknown") + ". The feed is connected; the market may simply be quiet.";
   }
 
-  return { quietFeedPollDue: quietFeedPollDue, feedSilenceNote: feedSilenceNote, healthItems: healthItems, heatTiles: heatTiles, fillRateRows: fillRateRows, exposureRows: exposureRows, netExposure: netExposure, evaluateAlerts: evaluateAlerts, performanceRows: performanceRows, sessionSummary: sessionSummary, openOrderRows: openOrderRows, DEFAULT_THRESHOLDS: DEFAULT_THRESHOLDS };
+  // --- ported from the dashboard-homepage branch --------------------------
+  // Candlesticks from the SSE price buffer ({t, p} cents): open/close are the
+  // first/last sample in each fixed-width bucket, high/low the extremes.
+  function candles(samples, bucketMs) {
+    if (!bucketMs || bucketMs <= 0) return [];
+    var sorted = (samples || []).slice().sort(function (a, b) { return a.t - b.t; });
+    var out = [], cur = null;
+    sorted.forEach(function (s) {
+      var bt = Math.floor(s.t / bucketMs) * bucketMs;
+      if (!cur || cur.t !== bt) { cur = { t: bt, open: s.p, high: s.p, low: s.p, close: s.p }; out.push(cur); }
+      else { cur.high = Math.max(cur.high, s.p); cur.low = Math.min(cur.low, s.p); cur.close = s.p; }
+    });
+    return out;
+  }
+
+  // Session-cumulative VWAP aligned to the same buckets, from market `trade`
+  // events ({t, p, qty}); Adeline's execution-quality reference line.
+  function vwapPoints(trades, bucketMs) {
+    if (!bucketMs || bucketMs <= 0) return [];
+    var sorted = (trades || []).slice().sort(function (a, b) { return a.t - b.t; });
+    var pv = 0, vol = 0, out = [], curBt = null;
+    sorted.forEach(function (t) {
+      var bt = Math.floor(t.t / bucketMs) * bucketMs;
+      pv += t.p * (t.qty || 0); vol += (t.qty || 0);
+      var v = vol > 0 ? pv / vol : t.p;
+      if (curBt === bt) out[out.length - 1] = { t: bt, vwap: v };
+      else { out.push({ t: bt, vwap: v }); curBt = bt; }
+    });
+    return out;
+  }
+
+  function mean(xs) { return xs.length ? xs.reduce(function (a, b) { return a + b; }, 0) / xs.length : 0; }
+  function stddev(xs) {
+    if (xs.length < 2) return 0;
+    var m = mean(xs);
+    return Math.sqrt(xs.reduce(function (a, b) { return a + (b - m) * (b - m); }, 0) / xs.length);
+  }
+  // Per-trade Sharpe (mean realised P&L per sell fill over its population
+  // stddev), not annualised: one intraday window has no calendar or risk-free
+  // rate. Raymond asked for "a Sharpe per instrument"; the UI must label it.
+  function sharpe(pnls) {
+    if (!pnls || pnls.length < 2) return null;
+    var sd = stddev(pnls);
+    return sd === 0 ? null : mean(pnls) / sd;
+  }
+
+  // Drawdown over equity snapshots ({t, value} cents): worst peak-to-trough
+  // drop and the current drop from the latest peak, as fractions of the peak.
+  function drawdown(equity) {
+    var series = (equity || []).slice().sort(function (a, b) { return a.t - b.t; });
+    var peak = -Infinity, maxDd = 0, curDd = 0;
+    series.forEach(function (e) {
+      if (e.value > peak) peak = e.value;
+      var dd = peak > 0 ? (peak - e.value) / peak : 0;
+      if (dd > maxDd) maxDd = dd;
+      curDd = dd;
+    });
+    return { maxDrawdown: maxDd, currentDrawdown: curDd, peak: peak === -Infinity ? null : peak, points: series.length };
+  }
+
+  // Per-instrument strategy and regime state, from the bot's GET /status
+  // (`risk.instruments` from the risk model, `limits.max_position` caps) plus
+  // the configured strategy type per symbol. Makes the "Strategy" panel live
+  // where the homepage branch only had a scaffold.
+  function strategyStateRows(bot, tags, symbols) {
+    var inst = (bot && bot.risk && bot.risk.instruments) || {};
+    var caps = (bot && bot.limits && bot.limits.max_position) || {};
+    return (symbols || []).map(function (s) {
+      var r = inst[s];
+      if (!r) return { symbol: s, strategy: (tags || {})[s] || DASH, personality: DASH, regime: DASH, atrPct: DASH, sizeMultiplier: DASH, state: "no data", stopLevel: null, cap: typeof caps[s] === "number" ? caps[s] : null, quantity: 0 };
+      var state = r.paused ? "paused" + (typeof r.cooldown_remaining_s === "number" && r.cooldown_remaining_s > 0 ? " " + Math.round(r.cooldown_remaining_s) + "s" : "") : "active";
+      return {
+        symbol: s,
+        strategy: (tags || {})[s] || DASH,
+        personality: r.personality || DASH,
+        regime: r.regime || DASH,
+        atrPct: typeof r.atr_pct === "number" ? (r.atr_pct * 100).toFixed(2) + "%" : DASH,
+        sizeMultiplier: typeof r.size_multiplier === "number" ? r.size_multiplier.toFixed(2) + "\u00d7" : DASH,
+        state: state,
+        stopLevel: typeof r.stop_level === "number" ? r.stop_level : null,
+        cap: typeof caps[s] === "number" ? caps[s] : null,
+        quantity: r.quantity || 0,
+      };
+    });
+  }
+
+  return { candles: candles, vwapPoints: vwapPoints, sharpe: sharpe, drawdown: drawdown, strategyStateRows: strategyStateRows, quietFeedPollDue: quietFeedPollDue, feedSilenceNote: feedSilenceNote, healthItems: healthItems, heatTiles: heatTiles, fillRateRows: fillRateRows, exposureRows: exposureRows, netExposure: netExposure, evaluateAlerts: evaluateAlerts, performanceRows: performanceRows, sessionSummary: sessionSummary, openOrderRows: openOrderRows, DEFAULT_THRESHOLDS: DEFAULT_THRESHOLDS };
 });

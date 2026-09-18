@@ -57,6 +57,7 @@ FAMILY_BY_CLASS = {
     "MomentumStrategy": "momentum",
     "MeanReversionStrategy": "mean_reversion",
     "PairsFollowStrategy": "pairs_follow",
+    "CrashBuyStrategy": "crash_buy",
 }
 
 
@@ -141,6 +142,21 @@ DEFAULT_POLICY = {
         Regime.COMPRESSION: 0.25,
         Regime.SHOCK: 0.0,
         Regime.NEUTRAL: 0.5,
+        Regime.WARMUP: 0.0,
+    },
+    # The crash buyer is the one family that WANTS a shock: its entry is the
+    # shock. Every other family is zeroed in SHOCK because "the move is
+    # information, not noise"; here the bet is precisely that the information
+    # is over-priced. TREND is halved, not zeroed — a crash inside a downtrend
+    # is the falling knife, but the classifier's TREND label is direction-blind
+    # at this seam (TREND_UP and TREND_DOWN both map to TREND), so zeroing it
+    # would also suppress buying a dip in an uptrend, which is the good case.
+    "crash_buy": {
+        Regime.TREND: 0.5,
+        Regime.RANGE: 1.0,
+        Regime.COMPRESSION: 0.5,
+        Regime.SHOCK: 1.0,
+        Regime.NEUTRAL: 1.0,
         Regime.WARMUP: 0.0,
     },
 }

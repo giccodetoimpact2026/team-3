@@ -15,6 +15,7 @@
       </div>
       <!-- Persona views (brief §8 decision 5). Buttons are built from js/views.js. -->
       <nav class="views" id="view-switcher" aria-label="Dashboard view"></nav>
+      <a class="backtest-link" href="backtest.html" title="Parameter-sweep backtest results (separate page)">Backtest &#8599;</a>
       <div class="status">
         <span id="bot-state" class="badge bot offline" title="Bot lifecycle state (GET /bot/status)">BOT OFFLINE</span>
         <button id="kill-switch" class="btn danger" type="button" disabled title="Emergency stop: block new orders, cancel every open order, stop the bot. No confirmation.">HALT BOT</button>
@@ -52,9 +53,10 @@
         <div id="alerts-list" class="alerts-list"></div>
       </section>
 
-      <section class="news-settings" id="news-settings" style="display: none">
+      <section class="news-settings" id="news-settings" data-section="params" style="display: none">
         <div class="section-head">
-          <h2>News Strategy</h2>
+          <h2>Strategy parameters (two-step confirm)</h2>
+          <span class="section-meta">One click to propose, one to confirm. Changes go to the bot's news engine and are written to the audit log.</span>
           <label class="news-toggle"><input type="checkbox" id="news-enabled" /> Enabled</label>
         </div>
         <div class="news-controls">
@@ -72,6 +74,11 @@
             <span id="news-default-mult-val" class="range-val">0.50</span>
           </div>
           <div id="news-symbol-multipliers"></div>
+        </div>
+        <div id="param-confirm" class="param-confirm" style="display: none">
+          <span id="param-confirm-text"></span>
+          <button id="param-confirm-yes" class="btn" type="button">Confirm</button>
+          <button id="param-confirm-no" class="btn ghost" type="button">Cancel</button>
         </div>
       </section>
       <section class="cards" data-section="cards">
@@ -91,6 +98,11 @@
           <div class="label">Unrealized P&amp;L</div>
           <div class="value">—</div>
         </div>
+      </section>
+
+      <!-- Executive / Risk: drawdown from the session equity curve -->
+      <section class="drawdown" id="drawdown" data-section="drawdown">
+        <div class="summary-grid four" id="drawdown-grid"></div>
       </section>
 
       <!-- Executive: heat map (Raymond) -->
@@ -125,9 +137,19 @@
         <div class="section-head">
           <h2>Price chart</h2>
           <div class="tabs" id="chart-tabs" role="tablist"></div>
+          <span class="seg" role="group" aria-label="Chart mode">
+            <button class="seg-btn active" data-mode="line" type="button" title="Price line with our fills, resting orders and the 1-minute forecast cone">Line + forecast</button>
+            <button class="seg-btn" data-mode="candles" type="button" title="OHLC candlesticks from the price feed with the session VWAP from market trades">Candles + VWAP</button>
+          </span>
+          <span class="seg" role="group" aria-label="Bar interval" id="bucket-seg" style="display: none">
+            <button class="seg-btn active" data-bucket="60000" type="button">1m</button>
+            <button class="seg-btn" data-bucket="300000" type="button">5m</button>
+            <button class="seg-btn" data-bucket="900000" type="button">15m</button>
+          </span>
           <span class="section-meta" id="chart-meta">—</span>
         </div>
         <div id="chart-box" class="chart-box"></div>
+        <div id="candle-box" class="chart-box" style="display: none"><canvas id="candle-canvas" width="900" height="260"></canvas></div>
         <div class="source">Built from SSE <code>price</code> events (no candles endpoint). Dots are our fills. The shaded cone is the dashboard's 1-minute forecast: a model estimate with a 90% band, not a fact.</div>
       </section>
 
@@ -173,6 +195,23 @@
           </thead>
           <tbody id="positions-body"></tbody>
         </table>
+      </section>
+
+      <!-- Trader / Analyst: live strategy and regime state per instrument, from GET /bot/status -->
+      <section class="strategy-state" id="strategy-state" data-section="strategy-state">
+        <div class="section-head">
+          <h2>Strategy state</h2>
+          <span class="section-meta" id="strategy-state-meta">Which strategy runs each instrument, its regime and the size the risk model allows right now</span>
+        </div>
+        <table class="dense">
+          <thead>
+            <tr>
+              <th>Symbol</th><th>Strategy</th><th>Personality</th><th>Regime</th><th class="num">ATR %</th><th class="num">Size</th><th>State</th><th class="num">Stop</th><th class="num">Held</th><th class="num">Cap</th>
+            </tr>
+          </thead>
+          <tbody id="strategy-state-body"></tbody>
+        </table>
+        <div class="source">Source: bot <code>/status</code> (<code>risk.instruments</code>, <code>limits.max_position</code>) and config strategy types.</div>
       </section>
 
       <!-- Trader: fill rates per instrument (Adeline) -->
@@ -274,6 +313,7 @@
               <th class="num">Avg win</th>
               <th class="num">Avg loss</th>
               <th class="num">Profit factor</th>
+              <th class="num" title="Mean realised P&amp;L per sell fill over its standard deviation. Per trade, not annualised.">Sharpe (per trade)</th>
               <th class="num">Realised</th>
             </tr>
           </thead>
@@ -336,6 +376,18 @@
         <div class="source" id="export-status"></div>
       </section>
 
+      <!-- Ops: audit log of human actions this session -->
+      <section class="audit" id="audit" data-section="audit">
+        <div class="section-head">
+          <h2>Audit log</h2>
+          <span class="section-meta">Human actions this session: halts and parameter changes, timestamped in SGT.</span>
+        </div>
+        <table class="dense">
+          <thead><tr><th>Time (SGT)</th><th>Action</th><th>Detail</th></tr></thead>
+          <tbody id="audit-body"></tbody>
+        </table>
+      </section>
+
       <!-- M4: conversational panel. Read-only; the LLM decides which MCP tool
            to call, the panel runs it and renders the answer with the tool's
            source citation and a rule-derived confidence label. -->
@@ -364,6 +416,7 @@
     <script src="js/views.js"></script>
     <script src="js/prices.js"></script>
     <script src="js/chart.js"></script>
+    <script src="js/candles.js"></script>
     <script src="js/analytics.js"></script>
     <script src="js/assistant.js"></script>
     <script src="js/mcp.js"></script>

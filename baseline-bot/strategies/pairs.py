@@ -117,12 +117,16 @@ class PairsFollowStrategy(BaseStrategy):
             return None
 
         if self.armed:
-            # The spread gate applies to ENTRIES only — a wide book must never
-            # stop us reducing, or the illiquidity that made it wide traps the
-            # position.
+            # The spread and liquidity gates apply to ENTRIES only — a thin book
+            # must never stop us reducing, or the illiquidity that triggered
+            # them traps the position.
             if not self.spread_ok():
                 return None
-            return Signal("buy", self.trade_quantity, self._limit_price(last, "buy"))
+            limit = self._limit_price(last, "buy")
+            quantity = self.entry_size(limit)
+            if quantity <= 0:
+                return None
+            return Signal("buy", quantity, limit)
 
         if sellable > 0 and self._leader_rolled_over():
             # The leading signal is gone and we still hold: reduce/close.

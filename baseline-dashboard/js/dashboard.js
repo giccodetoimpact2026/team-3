@@ -49,6 +49,14 @@ const DashboardController = {
   _mcpOkAt: 0,
   _prev: {}, // last rendered numeric values, for the change flash
   sessionStatus: null, // last SSE session status: open | halted | closed
+  trades: {}, // symbol -> [{t, p, qty}] market trades from SSE, for VWAP
+  equity: [], // [{t, value}] total value per portfolio read, for drawdown
+  audit: [], // [{at, action, detail}] human actions this session
+  chartMode: "line", // line | candles
+  chartBucket: 60000,
+  _pendingParam: null,
+  _newsConfig: null,
+  STRATEGY_TAGS: { NOVA: "momentum", ELXR: "mean_reversion", CRVX: "momentum", DRFT: "mean_reversion", AXON: "pairs_follow" }, // fallback when the bot has not reported; the journal tag wins when present
 
   init: function () {
     this.cursor = new FeedCursor();
@@ -62,6 +70,7 @@ const DashboardController = {
     });
     $("#export-csv").on("click", this.exportCsv.bind(this));
     $("#kill-switch").on("click", this.haltBot.bind(this));
+    this.bindChartControls();
     this.bindNewsControls();
     this.loadNewsConfig();
     this.pollBotStatus();
@@ -83,13 +92,18 @@ const DashboardController = {
   initViews: function () {
     var self = this;
     var st = this.storage();
-    this.view = Views.resolveView(st && st.getItem("view"));
-    Panels.renderViewSwitcher(this.view, function (id) {
+    var fromHash = (location.hash || "").replace(/^#/, "");
+    this.view = Views.resolveView(fromHash || (st && st.getItem("view")));
+    function select(id, fromHashChange) {
       self.view = Panels.applyView(id);
       try { st && st.setItem("view", self.view); } catch (_) {}
+      if (!fromHashChange) { try { history.replaceState(null, "", "#" + self.view); } catch (_) { location.hash = self.view; } }
       self.renderPanels();
-    });
+    }
+    Panels.renderViewSwitcher(this.view, function (id) { select(id, false); });
     Panels.applyView(this.view);
+    try { history.replaceState(null, "", "#" + this.view); } catch (_) {}
+    window.addEventListener("hashchange", function () { select((location.hash || "").replace(/^#/, ""), true); });
   },
 
   // Everything derived for the persona panels, from state already in memory
@@ -178,6 +192,11 @@ const DashboardController = {
     var resting = open.filter(function (o) { return o.symbol === self.chartSymbol; }).map(function (o) { return { side: o.side.toLowerCase(), price: o.price, remaining: o.remaining }; });
     var silence = Analytics.feedSilenceNote ? Analytics.feedSilenceNote({ lastEventAt: this._lastEventAt, sessionStatus: this.sessionStatus }, Date.now()) : null;
     Panels.renderChart(this.chartSymbol, chartSamples, fills, this.forecasts[this.chartSymbol], resting, silence);
+    this.renderCandles(chartSamples);
+    Panels.renderDrawdown(Analytics.drawdown(this.equity), this.equity.length);
+    var tags = Object.assign({}, this.STRATEGY_TAGS, this.history.strategies ? this.symbolTags() : {});
+    Panels.renderStrategyState(Analytics.strategyStateRows(this.bot, tags, symbols), !!this.bot);
+    Panels.renderAudit(this.audit);
     if (Panels.renderOpenOrders) Panels.renderOpenOrders(open);
 
     Panels.renderFillRate(Analytics.fillRateRows(this.orders, this.history, symbols));
@@ -199,7 +218,9 @@ const DashboardController = {
     if (this._halting) return; // the halt response renders the final state
     BotAPI.getStatus()
       .then(function (status) {
+        var cameOnline = !self.bot;
         self.bot = status;
+        if (cameOnline) self.loadNewsConfig(); // the bot may start after the page; fetch its parameters when it appears
         self.renderBotStatus(status);
         self.pollBotOrders();
         self.requestPanels();
@@ -259,6 +280,7 @@ const DashboardController = {
     var self = this;
     if (this._halting) return;
     this._halting = true;
+    this.logAudit("HALT BOT", "kill switch pressed on the dashboard");
     this.renderBotStatus({ state: "QUIESCING" });
     $("#halt-result").removeClass("error").text("Halting bot… cancelling open orders").show();
     BotAPI.halt()
@@ -334,6 +356,13 @@ const DashboardController = {
       // as a signal that our orders/fills may have changed and re-read them.
       self._lastEventAt = Date.now();
       if (!self.cursor.accept(e.lastEventId)) return;
+      var tr = self.parse(e.data);
+      if (tr && tr.symbol && tr.price > 0) {
+        var tt = tr.timestamp ? Date.parse(tr.timestamp) : Date.now();
+        var buf = self.trades[tr.symbol] || (self.trades[tr.symbol] = []);
+        buf.push({ t: isNaN(tt) ? Date.now() : tt, p: tr.price, qty: tr.qty || 0 });
+        if (buf.length > CONFIG.PRICE_HISTORY_CAPACITY) buf.shift();
+      }
       var o = self.bot && self.bot.orders;
       var quiet = o && o.active_orders === 0 && o.unknown_orders === 0;
       self.requestRefresh(quiet ? "portfolio" : "all");
@@ -390,6 +419,7 @@ const DashboardController = {
         else self.bindHistory(portfolio.session_id);
         self._exchangeOkAt = Date.now();
         self._exchangeError = null;
+        if (portfolio.total_value > 0) { self.equity.push({ t: Date.now(), value: portfolio.total_value }); if (self.equity.length > 2000) self.equity.shift(); }
         self.rememberStartingValue(portfolio);
         self.renderCards(portfolio);
         self.renderPositions(portfolio);
@@ -474,6 +504,8 @@ const DashboardController = {
     this.orders = [];
     this.pnl = null;
     this.prices.reset();
+    this.trades = {};
+    this.equity = [];
     this.announcements = [];
     Panels.renderAnnouncements([]);
     this.startPrices = {};
@@ -727,6 +759,47 @@ const DashboardController = {
     if (due) { this.refreshPortfolio(); this.requestPanels(); }
   },
 
+  // Strategy per symbol as the bot journal reports it (most recent order wins).
+  symbolTags: function () {
+    var out = {};
+    var kinds = { momentum: 1, mean_reversion: 1, pairs_follow: 1, market_making: 1 }; // exits, news and the crash guard are overlays, not the symbol's strategy
+    this.history.entries().forEach(function (e) { if (e.strategy && e.symbol && kinds[e.strategy]) out[e.symbol] = e.strategy; });
+    return out;
+  },
+
+  // Chart mode: SVG line + forecast (ours) or canvas candles + VWAP (ported).
+  bindChartControls: function () {
+    var self = this;
+    $(".seg-btn[data-mode]").on("click", function () {
+      $(".seg-btn[data-mode]").removeClass("active"); $(this).addClass("active");
+      self.chartMode = $(this).attr("data-mode");
+      $("#bucket-seg").toggle(self.chartMode === "candles");
+      self.renderPanels();
+    });
+    $("#bucket-seg .seg-btn").on("click", function () {
+      $("#bucket-seg .seg-btn").removeClass("active"); $(this).addClass("active");
+      self.chartBucket = Number($(this).attr("data-bucket")) || 60000;
+      self.renderPanels();
+    });
+  },
+
+  renderCandles: function (samples) {
+    var candlesOn = this.chartMode === "candles";
+    $("#chart-box").toggle(!candlesOn);
+    $("#candle-box").toggle(candlesOn);
+    if (!candlesOn) return;
+    var candles = Analytics.candles(samples, this.chartBucket);
+    var vwap = Analytics.vwapPoints(this.trades[this.chartSymbol] || [], this.chartBucket);
+    Candles.draw(document.getElementById("candle-canvas"), candles, vwap);
+    $("#chart-meta").text(candles.length + " bars of " + (this.chartBucket / 60000) + "m from " + samples.length + " price samples · VWAP from " + (this.trades[this.chartSymbol] || []).length + " market trades");
+  },
+
+  logAudit: function (action, detail) {
+    this.audit.push({ at: new Date(), action: action, detail: detail || "" });
+    if (this.audit.length > 200) this.audit.shift();
+    Panels.renderAudit(this.audit);
+  },
+
   renderSession: function (status) {
     this.sessionStatus = status || null;
     var $b = $("#session-badge");
@@ -756,7 +829,7 @@ const DashboardController = {
 
   loadNewsConfig: function () {
     var self = this;
-    $.getJSON("/bot/news/config").done(function (cfg) {
+    $.getJSON(CONFIG.BOT_BASE_URL + "/news/config").done(function (cfg) {
       self._newsConfig = cfg;
       self.renderNewsConfig(cfg);
       $("#news-settings").show();
@@ -788,42 +861,38 @@ const DashboardController = {
     });
   },
 
+  // Two-step confirm on every parameter change (Priya: one click to propose,
+  // one to confirm). A change is staged, sent only on Confirm, and audited.
   bindNewsControls: function () {
     var self = this;
-
-    function post(patch) {
-      $.ajax({
-        url: "/bot/news/config",
-        method: "POST",
-        contentType: "application/json",
-        data: JSON.stringify(patch),
-      }).done(function (cfg) {
-        self._newsConfig = cfg;
-      });
+    function stage(patch, text) {
+      self._pendingParam = patch;
+      $("#param-confirm-text").text("Apply change: " + text + "?");
+      $("#param-confirm").show();
     }
-
-    $("#news-enabled").on("change", function () {
-      post({ enabled: this.checked });
+    $("#param-confirm-yes").on("click", function () {
+      var patch = self._pendingParam;
+      if (!patch) return;
+      self._pendingParam = null;
+      $("#param-confirm").hide();
+      $.ajax({ url: CONFIG.BOT_BASE_URL + "/news/config", method: "POST", contentType: "application/json", data: JSON.stringify(patch) })
+        .done(function (cfg) { self._newsConfig = cfg; self.renderNewsConfig(cfg); self.logAudit("PARAM CHANGE", JSON.stringify(patch)); })
+        .fail(function () { self.logAudit("PARAM CHANGE FAILED", JSON.stringify(patch)); if (self._newsConfig) self.renderNewsConfig(self._newsConfig); });
     });
-    $("#news-cooldown").on("change", function () {
-      post({ cooldown_seconds: Number(this.value) });
+    $("#param-confirm-no").on("click", function () {
+      self._pendingParam = null;
+      $("#param-confirm").hide();
+      if (self._newsConfig) self.renderNewsConfig(self._newsConfig);
     });
-    $("#news-ttl").on("change", function () {
-      post({ directive_ttl_seconds: Number(this.value) });
-    });
-    $("#news-default-mult").on("input", function () {
-      $("#news-default-mult-val").text(Number(this.value).toFixed(2));
-    }).on("change", function () {
-      post({ default_size_multiplier: Number(this.value) });
-    });
-    $(document).on("input", ".news-sym-slider", function () {
-      $("#" + this.id + "-val").text(Number(this.value).toFixed(2));
-    });
+    $("#news-enabled").on("change", function () { stage({ enabled: this.checked }, "news strategy " + (this.checked ? "enabled" : "disabled")); });
+    $("#news-cooldown").on("change", function () { stage({ cooldown_seconds: Number(this.value) }, "cooldown = " + this.value + "s"); });
+    $("#news-ttl").on("change", function () { stage({ directive_ttl_seconds: Number(this.value) }, "bias TTL = " + this.value + "s"); });
+    $("#news-default-mult").on("input", function () { $("#news-default-mult-val").text(Number(this.value).toFixed(2)); })
+      .on("change", function () { stage({ default_size_multiplier: Number(this.value) }, "default multiplier = " + Number(this.value).toFixed(2)); });
+    $(document).on("input", ".news-sym-slider", function () { $("#" + this.id + "-val").text(Number(this.value).toFixed(2)); });
     $(document).on("change", ".news-sym-slider", function () {
-      var sym = $(this).data("symbol");
-      var patch = { size_multiplier: {} };
-      patch.size_multiplier[sym] = Number(this.value);
-      post(patch);
+      var sym = $(this).data("symbol"); var patch = { size_multiplier: {} }; patch.size_multiplier[sym] = Number(this.value);
+      stage(patch, sym + " multiplier = " + Number(this.value).toFixed(2));
     });
   },
 

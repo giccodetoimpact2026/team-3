@@ -84,8 +84,8 @@ test("performanceRows: fills, wins, losses, win rate, average win and loss, prof
     { trade_id: "t1", symbol: "NOVA", side: "buy", price: 10000, quantity: 100, timestamp: "2026-09-18T01:01:00Z" },
   ];
   const rows = A.performanceRows(trades, [{ symbol: "NOVA", quantity: 0, avg_cost: 0 }], ["NOVA", "ELXR"]);
-  assert.deepStrictEqual(rows[0], { symbol: "NOVA", fills: 4, wins: 1, losses: 1, winRate: "50%", avgWin: 100000, avgLoss: -50000, profitFactor: "2.00", realized: 50000 });
-  assert.deepStrictEqual(rows[1], { symbol: "ELXR", fills: 0, wins: 0, losses: 0, winRate: "—", avgWin: null, avgLoss: null, profitFactor: "—", realized: 0 });
+  assert.deepStrictEqual(rows[0], { symbol: "NOVA", fills: 4, wins: 1, losses: 1, winRate: "50%", avgWin: 100000, avgLoss: -50000, profitFactor: "2.00", realized: 50000, sharpe: 1 / 3 });
+  assert.deepStrictEqual(rows[1], { symbol: "ELXR", fills: 0, wins: 0, losses: 0, winRate: "—", avgWin: null, avgLoss: null, profitFactor: "—", realized: 0, sharpe: null });
 });
 
 test("sessionSummary: total P&L, fill count, best and worst instrument, alert count", () => {
@@ -173,4 +173,71 @@ test("feedSilenceNote: explains a quiet feed, naming the session state when know
   assert.ok(/5m 11s|311s/.test(open) && /open/i.test(open), open);
   assert.strictEqual(A.feedSilenceNote({ lastEventAt: now - 3000, sessionStatus: "open" }, now), null, "not silent");
   assert.strictEqual(A.feedSilenceNote({ lastEventAt: 0 }, now), null, "never had an event");
+});
+
+// --- ported from the dashboard-homepage branch (candles, VWAP, Sharpe, drawdown) ---
+
+test("candles: buckets {t, p} price samples into OHLC bars", () => {
+  const samples = [
+    { t: 1000, p: 100 }, { t: 20000, p: 110 }, { t: 50000, p: 90 }, { t: 59000, p: 105 },
+    { t: 61000, p: 106 }, { t: 100000, p: 101 },
+  ];
+  const bars = A.candles(samples, 60000);
+  assert.deepStrictEqual(bars, [
+    { t: 0, open: 100, high: 110, low: 90, close: 105 },
+    { t: 60000, open: 106, high: 106, low: 101, close: 101 },
+  ]);
+  assert.deepStrictEqual(A.candles([], 60000), []);
+  assert.deepStrictEqual(A.candles(samples, 0), []);
+});
+
+test("vwapPoints: running volume-weighted average per bucket from {t, p, qty} trades", () => {
+  const trades = [{ t: 5, p: 100, qty: 1 }, { t: 10, p: 200, qty: 3 }, { t: 70000, p: 100, qty: 4 }];
+  const pts = A.vwapPoints(trades, 60000);
+  assert.strictEqual(pts.length, 2);
+  assert.strictEqual(pts[0].vwap, 175); // (100 + 600) / 4
+  assert.strictEqual(pts[1].vwap, 137.5); // (700 + 400) / 8
+});
+
+test("sharpe: per-trade mean over stddev; null below two trades or with zero variance", () => {
+  assert.strictEqual(A.sharpe([5]), null);
+  assert.strictEqual(A.sharpe([5, 5, 5]), null);
+  assert.ok(Math.abs(A.sharpe([10, -5, 10, -5]) - (2.5 / 7.5)) < 1e-9);
+});
+
+test("drawdown: max peak-to-trough drop and current drawdown as fractions of the peak", () => {
+  const dd = A.drawdown([{ t: 1, value: 1000 }, { t: 2, value: 1200 }, { t: 3, value: 900 }, { t: 4, value: 1100 }]);
+  assert.ok(Math.abs(dd.maxDrawdown - 0.25) < 1e-9);
+  assert.ok(Math.abs(dd.currentDrawdown - (100 / 1200)) < 1e-9);
+  assert.strictEqual(dd.peak, 1200);
+  assert.deepStrictEqual(A.drawdown([]), { maxDrawdown: 0, currentDrawdown: 0, peak: null, points: 0 });
+});
+
+test("performanceRows: carries a per-trade Sharpe from the sell-fill P&Ls", () => {
+  const trades = [
+    { trade_id: "t1", symbol: "NOVA", side: "buy", price: 10000, quantity: 100, timestamp: "2026-09-18T01:01:00Z" },
+    { trade_id: "t2", symbol: "NOVA", side: "sell", price: 11000, quantity: 50, timestamp: "2026-09-18T01:02:00Z" },
+    { trade_id: "t3", symbol: "NOVA", side: "sell", price: 9500, quantity: 50, timestamp: "2026-09-18T01:03:00Z" },
+    { trade_id: "t4", symbol: "NOVA", side: "buy", price: 10000, quantity: 100, timestamp: "2026-09-18T01:04:00Z" },
+    { trade_id: "t5", symbol: "NOVA", side: "sell", price: 10500, quantity: 100, timestamp: "2026-09-18T01:05:00Z" },
+  ];
+  const rows = A.performanceRows(trades, [{ symbol: "NOVA", quantity: 0, avg_cost: 0 }], ["NOVA", "ELXR"]);
+  // sell pnls (cents): +50000, -25000, +50000 -> mean 25000, population sd ~35355
+  assert.ok(Math.abs(rows[0].sharpe - (25000 / Math.sqrt(((25000 ** 2) * 2 + 50000 ** 2) / 3))) < 1e-6);
+  assert.strictEqual(rows[1].sharpe, null);
+});
+
+test("strategyStateRows: per-instrument strategy, regime and sizing from the bot's status", () => {
+  const bot = {
+    limits: { max_position: { NOVA: 4000, AXON: 4000 } },
+    risk: { instruments: {
+      NOVA: { personality: "trend", regime: "HIGH", atr_pct: 0.0123, size_multiplier: 1.0, paused: false, stop_level: 13000, quantity: 500 },
+      AXON: { personality: "follower", regime: null, atr_pct: null, size_multiplier: 0.5, paused: true, cooldown_remaining_s: 42, quantity: 0 },
+    } },
+  };
+  const rows = A.strategyStateRows(bot, { NOVA: "momentum", AXON: "pairs_follow" }, ["NOVA", "AXON", "DRFT"]);
+  assert.deepStrictEqual(rows[0], { symbol: "NOVA", strategy: "momentum", personality: "trend", regime: "HIGH", atrPct: "1.23%", sizeMultiplier: "1.00×", state: "active", stopLevel: 13000, cap: 4000, quantity: 500 });
+  assert.deepStrictEqual(rows[1].state, "paused 42s");
+  assert.strictEqual(rows[1].regime, "—");
+  assert.deepStrictEqual(rows[2], { symbol: "DRFT", strategy: "—", personality: "—", regime: "—", atrPct: "—", sizeMultiplier: "—", state: "no data", stopLevel: null, cap: null, quantity: 0 });
 });

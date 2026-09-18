@@ -26,6 +26,10 @@ class BaseStrategy:
         self.limit_offset_bps = int(config.get("limit_offset_bps", 5))
         spread_cap = config.get("max_spread_bps")
         self.max_spread_bps = None if spread_cap is None else float(spread_cap)
+        # Liquidity filter: the fewest shares the book must be able to absorb
+        # before we will place an entry at all. None disables the filter.
+        depth_floor = config.get("min_depth_shares")
+        self.min_depth_shares = None if depth_floor is None else int(depth_floor)
         self.orderbook = None
         self.prices = deque(maxlen=self.lookback)
 
@@ -43,6 +47,42 @@ class BaseStrategy:
         hold extra state must extend this, not just clear `prices`.
         """
         self.prices.clear()
+
+    def entry_size(self, limit_price: int) -> int:
+        """How many shares to enter with, given what the book can absorb.
+
+        Adeline Loh's complaint is the specification: "If we're getting lots of
+        partial fills on NOVA, our sizing is too big for the book." The answer
+        to a thin book is therefore to trade SMALLER, not to refuse — refusing
+        gives up the trade, while sizing to the book takes the part of it the
+        market can actually fill. Derek and Aaron said the same about DRFT from
+        the other direction: "your order size moves the price — plan
+        accordingly."
+
+        Returns the clip to use, or 0 to place nothing:
+
+        * no book, or a stale one -> the full clip. A stale feed is not an empty
+          market, and `_limit_price` already falls back to a blind offset.
+        * depth at or better than our limit >= clip -> the full clip.
+        * less than that -> shrink to the available depth, unless it falls below
+          `min_depth_shares`, which is the floor where a fill is too small to be
+          worth the fees and the price impact of asking.
+
+        ENTRIES ONLY. Never call this on an exit: a thin book is exactly when
+        you most want out, and sizing an exit to available depth would leave the
+        remainder stranded.
+        """
+        if self.orderbook is None or limit_price <= 0:
+            return self.trade_quantity
+        depth = self.orderbook.depth_at_or_better(self.symbol, "buy", limit_price)
+        if depth is None:
+            return self.trade_quantity
+        if depth >= self.trade_quantity:
+            return self.trade_quantity
+        floor = self.min_depth_shares
+        if floor is not None and depth < floor:
+            return 0
+        return depth
 
     def spread_ok(self) -> bool:
         """False when the book spread exceeds the configured max, signalling

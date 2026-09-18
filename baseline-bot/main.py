@@ -15,6 +15,8 @@ import os
 import signal
 import sys
 import threading
+import time
+import uuid
 
 import yaml
 
@@ -27,6 +29,7 @@ from risk.crash_guard import CrashGuard, CrashResponder
 from risk.exits import ExitPolicy
 from risk.limits import RiskLimits
 from strategies.base import Signal
+from strategies.crash_buy import CrashBuyStrategy
 from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
 from news.engine import NewsEngine
@@ -39,7 +42,30 @@ from utils.heartbeat import Heartbeat
 from utils.logger import log
 
 
+def load_env_file():
+    """Read KEY=VALUE lines from .env next to this file into os.environ.
+
+    Dependency-free (no python-dotenv). Existing environment variables win, so
+    an explicitly exported EXCHANGE_API_KEY still overrides the file.
+    """
+    path = os.path.join(os.path.dirname(__file__), ".env")
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except OSError:
+        pass
+
+
 def load_config():
+    load_env_file()
     path = os.path.join(os.path.dirname(__file__), "config.yaml")
     with open(path) as f:
         config = yaml.safe_load(f)
@@ -136,6 +162,8 @@ def build_strategy(symbol, strat_cfg, built=None):
         return MomentumStrategy(symbol, strat_cfg)
     if kind == "mean_reversion":
         return MeanReversionStrategy(symbol, strat_cfg)
+    if kind == "crash_buy":
+        return CrashBuyStrategy(symbol, strat_cfg)
     if kind == "pairs_follow":
         leader_symbol = strat_cfg["leader"]
         leader = (built or {}).get(leader_symbol)
@@ -519,12 +547,28 @@ def main():
         stale_seconds=float(ob_cfg.get("stale_threshold_seconds", 5)),
     )
 
-    # Attach book cache to each strategy for book-aware pricing + spread filter.
+    # Our own team name, so depth can exclude our resting orders: we cannot
+    # trade against ourselves (409 SELF_MATCH), so counting our own size as
+    # available liquidity overstates the book exactly when we are already in it.
+    try:
+        book_cache.team_name = (client.get_portfolio() or {}).get("team_name")
+        log(f"order book: excluding own orders for team {book_cache.team_name!r}")
+    except Exception as exc:
+        # Depth then counts our own orders, which only ever overstates
+        # liquidity — worth a warning, not worth failing to start.
+        log(f"order book: could not read team_name ({exc}); depth will include "
+            f"our own resting orders")
+
+    # Attach book cache to each strategy for book-aware pricing, the spread
+    # filter (how wide) and the liquidity filter (how deep).
     spread_limits = ob_cfg.get("max_spread_bps", {})
+    depth_floors = ob_cfg.get("min_depth_shares", {})
     for sym, strat in strategies.items():
         strat.orderbook = book_cache
         if sym in spread_limits:
             strat.max_spread_bps = float(spread_limits[sym])
+        if sym in depth_floors:
+            strat.min_depth_shares = int(depth_floors[sym])
 
     exits = ExitPolicy(
         config["risk"].get("exits", {}),

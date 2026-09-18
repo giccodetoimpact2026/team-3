@@ -57,3 +57,11 @@ test("sectionsFor: the health strip is in every view; announcements in every vie
   ["executive", "trader", "risk", "analyst"].forEach((v) => assert.ok(isVisible(v, "announcements"), v));
   assert.ok(!isVisible("ops", "announcements"));
 });
+
+test("sectionsFor: ported panels land on the persona that needs them", () => {
+  ["trader", "analyst"].forEach((v) => assert.ok(isVisible(v, "strategy-state"), v + " strategy-state"));
+  ["executive", "risk"].forEach((v) => assert.ok(isVisible(v, "drawdown"), v + " drawdown"));
+  assert.ok(isVisible("ops", "audit"));
+  assert.ok(isVisible("risk", "params"), "two-step parameter changes live on the Risk tab");
+  assert.ok(!isVisible("executive", "params") && !isVisible("trader", "audit"));
+});

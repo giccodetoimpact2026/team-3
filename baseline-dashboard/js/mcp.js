@@ -15,4 +15,7 @@ const MCP = {
   getPnl: function () {
     return this.callTool("get_pnl");
   },
+  getSessionSummary: function () {
+    return this.callTool("get_session_summary");
+  },
 };

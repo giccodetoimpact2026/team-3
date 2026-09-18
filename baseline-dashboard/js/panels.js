@@ -191,7 +191,7 @@ const Panels = {
     var self = this;
     function money(v) { return v === null ? self.DASH : formatCurrency(v); }
     $("#performance-body").html((rows || []).map(function (r) {
-      return "<tr><td>" + escapeHtml(r.symbol) + "</td><td class=\"num\">" + r.fills + "</td><td class=\"num\">" + r.wins + "</td><td class=\"num\">" + r.losses + "</td><td class=\"num\">" + escapeHtml(r.winRate) + "</td><td class=\"num\">" + escapeHtml(money(r.avgWin)) + "</td><td class=\"num\">" + escapeHtml(money(r.avgLoss)) + "</td><td class=\"num\">" + escapeHtml(r.profitFactor) + "</td><td class=\"num\">" + escapeHtml(formatCurrency(r.realized)) + "</td></tr>";
+      return "<tr><td>" + escapeHtml(r.symbol) + "</td><td class=\"num\">" + r.fills + "</td><td class=\"num\">" + r.wins + "</td><td class=\"num\">" + r.losses + "</td><td class=\"num\">" + escapeHtml(r.winRate) + "</td><td class=\"num\">" + escapeHtml(money(r.avgWin)) + "</td><td class=\"num\">" + escapeHtml(money(r.avgLoss)) + "</td><td class=\"num\">" + escapeHtml(r.profitFactor) + "</td><td class=\"num\">" + (r.sharpe === null || r.sharpe === undefined ? self.DASH : r.sharpe.toFixed(2)) + "</td><td class=\"num\">" + escapeHtml(formatCurrency(r.realized)) + "</td></tr>";
     }).join(""));
   },
 
@@ -208,6 +208,33 @@ const Panels = {
     }).join("") : "<tr><td colspan=\"11\" class=\"empty\">Nothing resting: the bot has no open orders on the exchange</td></tr>");
     var buys = rows.filter(function (r) { return r.side === "BUY"; }).length;
     $("#open-orders-meta").text(rows.length ? rows.length + " working · " + buys + " buy, " + (rows.length - buys) + " sell · from GET /orders" : "nothing resting");
+  },
+
+  // --- ported panels ---------------------------------------------------------
+  renderDrawdown: function (dd, equityPoints) {
+    var self = this;
+    function stat(label, value, cls) { return "<div class=\"stat\"><span class=\"label\">" + label + "</span><span class=\"num " + (cls || "") + "\">" + escapeHtml(value) + "</span></div>"; }
+    var have = equityPoints > 1;
+    $("#drawdown-grid").html(
+      stat("Max drawdown", have ? (dd.maxDrawdown * 100).toFixed(2) + "%" : self.DASH, dd.maxDrawdown >= 0.15 ? "neg" : "") +
+      stat("Current drawdown", have ? (dd.currentDrawdown * 100).toFixed(2) + "%" : self.DASH, dd.currentDrawdown >= 0.15 ? "neg" : "") +
+      stat("Equity peak", dd.peak ? formatCurrency(dd.peak) : self.DASH) +
+      stat("Equity samples", String(equityPoints) + (have ? "" : " (collecting)"))
+    );
+  },
+
+  renderStrategyState: function (rows, botOnline) {
+    var self = this;
+    $("#strategy-state-body").html((rows || []).map(function (r) {
+      return "<tr><td>" + escapeHtml(r.symbol) + "</td><td>" + (r.strategy !== self.DASH ? "<span class=\"strategy\">" + escapeHtml(r.strategy) + "</span>" : self.DASH) + "</td><td>" + escapeHtml(r.personality) + "</td><td class=\"regime\">" + escapeHtml(r.regime) + "</td><td class=\"num\">" + escapeHtml(r.atrPct) + "</td><td class=\"num\">" + escapeHtml(r.sizeMultiplier) + "</td><td class=\"state " + (r.state.indexOf("paused") === 0 ? "paused" : "") + "\">" + escapeHtml(r.state) + "</td><td class=\"num\">" + (r.stopLevel === null ? self.DASH : escapeHtml(formatCurrency(r.stopLevel))) + "</td><td class=\"num\">" + r.quantity + "</td><td class=\"num\">" + (r.cap === null ? self.DASH : r.cap) + "</td></tr>";
+    }).join(""));
+    $("#strategy-state-meta").text(botOnline ? "Live from the bot's risk model; regimes per the ATR classifier" : "Bot offline: strategy types from config only, no regime or sizing");
+  },
+
+  renderAudit: function (entries) {
+    $("#audit-body").html((entries || []).length ? entries.slice().reverse().map(function (a) {
+      return "<tr><td class=\"mono\">" + escapeHtml(formatSgt(a.at)) + "</td><td>" + escapeHtml(a.action) + "</td><td>" + escapeHtml(a.detail || "") + "</td></tr>";
+    }).join("") : "<tr><td colspan=\"3\" class=\"empty\">No human actions this session</td></tr>");
   },
 
   renderSummary: function (s, sessionId, botLabel) {
