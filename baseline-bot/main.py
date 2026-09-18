@@ -31,7 +31,30 @@ from utils.event_worker import EventWorker
 from utils.logger import log
 
 
+def load_env_file():
+    """Read KEY=VALUE lines from .env next to this file into os.environ.
+
+    Dependency-free (no python-dotenv). Existing environment variables win, so
+    an explicitly exported EXCHANGE_API_KEY still overrides the file.
+    """
+    path = os.path.join(os.path.dirname(__file__), ".env")
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except OSError:
+        pass
+
+
 def load_config():
+    load_env_file()
     path = os.path.join(os.path.dirname(__file__), "config.yaml")
     with open(path) as f:
         config = yaml.safe_load(f)
