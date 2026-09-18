@@ -290,15 +290,13 @@ def main():
         # Refusals, rejections and unknowns are all logged by OrderManager.
         # Nothing is reported as submitted unless the exchange acknowledged it.
         orders.submit_intent(symbol, signal.side, signal.quantity, signal.limit_price)
-        position = client.get_positions(symbol)
-        signal_obj = strat.signal(position)
-        if signal_obj is None:
-            return
-        if signal_obj.side == "buy" and not risk.allows_buy(symbol, position, signal_obj.quantity):
-            return
-        client.submit_limit_order(
-            symbol, signal_obj.side, signal_obj.quantity, signal_obj.limit_price, str(uuid.uuid4()))
-        log(f"submitted {signal_obj} for {symbol}")
+
+    def on_announcement(payload):
+        # Announcements are logged only; no strategy reacts to them yet.
+        log(
+            f"announcement #{payload.get('announcement_id')} "
+            f"[{payload.get('affected_symbol')}]: {payload.get('message')}"
+        )
 
     # --- signal handlers (P0-11, P0-14) -------------------------------------
 
@@ -331,10 +329,13 @@ def main():
 
     # --- start feed ---------------------------------------------------------
     feed = SSEFeed(config["exchange"]["base_url"], config["exchange"]["api_key"])
-    worker = EventWorker({"session": on_session, "price": on_price})
+    worker = EventWorker({
+        "session": on_session, "price": on_price, "announcement": on_announcement,
+    })
     worker.start()
     feed.on("session", lambda payload: worker.submit("session", payload))
     feed.on("price", lambda payload: worker.submit("price", payload))
+    feed.on("announcement", lambda payload: worker.submit("announcement", payload))
     feed.start()
     log("bot started")
 
