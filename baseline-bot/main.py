@@ -231,14 +231,17 @@ def make_price_handler(strategies, orders, state, lifecycle, exits=None,
             return
 
         symbol = payload.get("symbol")
+        # Record the mark for EVERY instrument that prints, even ones we don't
+        # auto-trade: a manual override (dashboard buy/sell) prices its
+        # marketable limit off this latest print, and correlated-group exposure
+        # is measured in notional, so a symbol that has not ticked this window
+        # would otherwise be valued at 0.
+        if symbol and payload.get("last_price"):
+            orders.record_mark(symbol, payload["last_price"])
         strat = strategies.get(symbol)
         if strat is None:
             return
         strat.on_price(payload["last_price"])
-        # Feed the mark even when the session is closed: correlated-group
-        # exposure is measured in notional, and a symbol that has not ticked
-        # this window would otherwise be valued at 0.
-        orders.record_mark(symbol, payload["last_price"])
         # The classifier keeps its own buffers, so it observes every print —
         # including between windows, so it is not cold at the open.
         if classifier is not None:
@@ -677,6 +680,10 @@ def main():
     # --- control endpoint (kill switch, P0-14) ------------------------------
     # The dashboard's HALT button POSTs /halt here through its local proxy.
     control_cfg = config.get("control", {})
+    # How far a manual override crosses the live mark to guarantee an immediate
+    # fill. The exchange only takes limit orders, so a "buy into the crash" is a
+    # marketable limit priced this many bps above the last print (a sell, below).
+    manual_slippage_bps = int(control_cfg.get("manual_slippage_bps", 200))
 
     def control_status():
         return {
@@ -685,12 +692,36 @@ def main():
             "session_open": state["session_open"],
         }
 
+    def manual_order(symbol, side, quantity):
+        """Place a human-directed order, overriding the bot's own decisions.
+
+        The dashboard sends only the symbol, side and quantity; the price is a
+        marketable limit computed here off the freshest live mark so the order
+        fills now rather than resting. Returns the OrderManager result dict.
+        """
+        if lifecycle["value"] != RUNNING:
+            return {"ok": False, "reason": f"bot is {lifecycle['value']}, not running"}
+        if not state["session_open"]:
+            return {"ok": False, "reason": "the market is closed"}
+        mark = orders.mark(symbol)
+        if mark <= 0:
+            return {"ok": False, "reason": "no live price for this instrument yet"}
+        cross = max(1, mark * manual_slippage_bps // 10_000)
+        if side == "buy":
+            price = mark + cross
+        else:
+            price = max(1, mark - cross)
+        log(f"manual override: {side} {quantity} {symbol} @ {price} "
+            f"(mark {mark}, +/-{manual_slippage_bps}bps)")
+        return orders.submit_manual(symbol, side, int(quantity), int(price))
+
     control = ControlServer(
         control_status,
         lambda: halt(client, lifecycle, shutdown_event, order_manager=orders),
         host=control_cfg.get("host", "127.0.0.1"),
         port=int(os.environ.get("BOT_CONTROL_PORT") or control_cfg.get("port", 8092)),
         news_engine=news_engine,
+        order_fn=manual_order,
     )
     control.start()
 

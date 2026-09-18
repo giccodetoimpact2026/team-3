@@ -353,3 +353,73 @@ def test_cancel_result_settles_on_not_cancellable():
         400, {"status": "error", "error": {"code": "ORDER_NOT_CANCELLABLE"}}))
     result = c.cancel_order("o1")
     assert result.outcome is CancelOutcome.NOT_CANCELLABLE and result.settled
+
+
+# --- Manual override (dashboard buy/sell) --------------------------------
+
+def test_manual_order_overrides_cooldown_and_one_active_limit(client, clock):
+    """The desk can place even while an automated order rests and the cooldown
+    is unexpired — the whole point of an override."""
+    manager = OrderManager(client, RiskLimits(500, 200, "NOVA", "ELXR"),
+                           session_id="w1", max_active_per_symbol=1, clock=clock,
+                           submit_cooldown=60)
+    manager.submit_intent("NOVA", "buy", 100, 4250)      # fills the one active slot
+    assert client.submit_limit_order.call_count == 1
+    manager.submit_intent("NOVA", "buy", 100, 4250)      # gated: cooldown + active
+    assert client.submit_limit_order.call_count == 1
+
+    result = manager.submit_manual("NOVA", "buy", 300, 4300)
+    assert result["ok"] is True
+    assert client.submit_limit_order.call_count == 2     # override went through
+
+
+def test_manual_order_ignores_position_cap(client, clock):
+    """Cap is 500; a manual buy of 5000 is the human deciding, so it is sent."""
+    manager = OrderManager(client, RiskLimits(500, 200, "NOVA", "ELXR"),
+                           session_id="w1", clock=clock, submit_cooldown=0)
+    result = manager.submit_manual("NOVA", "buy", 5000, 4300)
+    assert result["ok"] is True
+    _, _, qty, _, _ = client.submit_limit_order.call_args[0]
+    assert qty == 5000
+
+
+def test_manual_sell_is_clamped_to_holdings(client, clock):
+    client.get_portfolio.return_value = {
+        "session_id": "w1", "cash": 1_000_000_000, "reserved_cash": 0,
+        "positions": [{"symbol": "NOVA", "quantity": 30, "reserved_qty": 0,
+                       "avg_cost": 4000, "last_price": 4200}]}
+    manager = OrderManager(client, RiskLimits(500, 200, "NOVA", "ELXR"),
+                           session_id="w1", clock=clock, submit_cooldown=0)
+    result = manager.submit_manual("NOVA", "sell", 1000, 4100)
+    assert result["ok"] is True
+    assert result["quantity"] == 30                       # clamped to held shares
+    _, side, qty, _, _ = client.submit_limit_order.call_args[0]
+    assert side == "sell" and qty == 30
+
+
+def test_manual_sell_refused_when_flat(client, clock):
+    manager = OrderManager(client, RiskLimits(500, 200, "NOVA", "ELXR"),
+                           session_id="w1", clock=clock, submit_cooldown=0)
+    result = manager.submit_manual("NOVA", "sell", 100, 4100)
+    assert result["ok"] is False
+    assert client.submit_limit_order.call_count == 0
+
+
+def test_manual_order_refuses_non_positive_quantity(manager, client):
+    result = manager.submit_manual("NOVA", "buy", 0, 4250)
+    assert result["ok"] is False
+    assert client.submit_limit_order.call_count == 0
+
+
+def test_manual_order_refused_while_symbol_unreconciled(client, clock):
+    """An unknown in-flight order blocks a manual add: we can't risk doubling up
+    on an order whose fate we don't yet know."""
+    client.submit_limit_order.return_value = SubmitResult(
+        Outcome.UNKNOWN, "k", code="TIMEOUT")
+    manager = OrderManager(client, RiskLimits(500, 200, "NOVA", "ELXR"),
+                           session_id="w1", clock=clock, submit_cooldown=0)
+    manager.submit_intent("NOVA", "buy", 100, 4250)       # leaves an unknown key
+    calls = client.submit_limit_order.call_count
+    result = manager.submit_manual("NOVA", "buy", 100, 4250)
+    assert result["ok"] is False
+    assert client.submit_limit_order.call_count == calls  # nothing new sent

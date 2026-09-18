@@ -67,6 +67,22 @@ const BotAPI = {
       timeout: 15000, // cancelling many orders can take a few seconds
     });
   },
+
+  // POST /order -> manual override. The desk decides the quantity; the bot
+  // prices a marketable limit off the live mark and places it through the same
+  // OrderManager the strategies use. Resolves {ok:true, order_id, ...}; on a
+  // refusal the server answers 409 with {ok:false, reason} (surfaced via .fail
+  // -> xhr.responseJSON).
+  submitOrder: function (symbol, side, quantity) {
+    return $.ajax({
+      url: CONFIG.BOT_BASE_URL + "/order",
+      method: "POST",
+      contentType: "application/json",
+      dataType: "json",
+      data: JSON.stringify({ symbol: symbol, side: side, quantity: quantity }),
+      timeout: 10000,
+    });
+  },
 };
 
 // The parameter-sweep backtest is a batch artifact, not live exchange data: the

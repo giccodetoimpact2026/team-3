@@ -431,3 +431,9 @@ control:
   # Binds to localhost only; POST /halt runs the same path as Ctrl-C.
   host: "127.0.0.1"
   port: 8092
+  # Manual override (dashboard buy/sell buttons). The exchange only accepts
+  # limit orders, so an override is a *marketable* limit priced this many basis
+  # points across the live mark (buy above, sell below) to fill immediately.
+  # 200 bps = 2%. Raise it to fill through a fast-moving book, lower it to cap
+  # how far you'll cross.
+  manual_slippage_bps: 200
