@@ -1,0 +1,21 @@
+BugID,Title,Component,Status,Description
+BUG-001,Open orders remain on exchange after shutdown,Bot,Open,After the bot is stopped (Ctrl-C or kill) the orders it placed are still resting live on the exchange.
+BUG-002,Logging is stdout print statements only,Bot,Open,Trade and error events are only printed to the console; there is nothing structured or queryable to search later.
+BUG-003,No order-rate anomaly throttle,Bot,Open,"During the March incident a strategy loop fired a burst of orders before anyone noticed; nothing pauses the bot when the order rate spikes."
+BUG-004,Dashboard hardcodes instrument list,Dashboard,Open,The dashboard only ever shows two instruments; the others never appear even when they trade.
+BUG-005,Keep every call on X-API-Key,Bot,Guardrail,"Guardrail: send X-API-Key on every authenticated REST call — the SSE feed at /events is public, no key needed. As you add new calls, don't introduce Authorization or X-Team-Token; the exchange rejects anything else on the calls that do need a key."
+BUG-007,Stale P&L shown during reconnect,Dashboard,Open,During a connectivity blip the P&L figures freeze at their last values instead of clearing until fresh data arrives.
+BUG-ARCH,Dashboard refreshes slowly and misses market events,Dashboard,Open,"The dashboard only updates roughly every 30 seconds; it lags badly in fast markets and never shows announcements or market-halt events."
+BUG-008,No portfolio-level exposure cap,Bot,Open,Correlated instruments can all run at full size at the same time; total directional exposure is unbounded.
+BUG-009,No per-position stop-loss,Bot,Open,A losing position can run indefinitely; there is no stop-loss.
+BUG-010,Connectivity indicator can be misleading,Dashboard,Open,"The green/red status dot shows ONLINE even when the bot itself has died, as long as the exchange is reachable."
+BUG-011,Bot stops reacting to prices after a disconnect,Bot,Open,"After a network blip the bot silently stops reacting to prices with no error shown; restarting it fixes it."
+BUG-012,Mean-reversion loses on the secondary instrument in a trend,Bot,Open,"The secondary instrument's mean-reversion produces false buy signals during a clear downtrend — it reads a falling series as a run of dips and buys into it."
+BUG-013,Market-making module disabled,Bot,Open,There is a market-making strategy file but it is commented out / disabled and not running.
+BUG-014,Fixed trade size,Bot,Open,The bot always trades the same fixed quantity regardless of volatility or liquidity.
+BUG-016,Format numbers with a period decimal separator,Dashboard,Guardrail,"Guardrail: when you add number/currency formatting or data exports, force a period decimal separator (e.g. en-US). A comma-decimal locale would corrupt exported values."
+BUG-017,Errors are swallowed silently,Bot,Open,"Failures during order submission and in the main loop are swallowed and only printed; they aren't classified or retried."
+BUG-018,No price chart,Dashboard,Open,There is no price chart on the dashboard — only a commented-out placeholder.
+BUG-019,Crash when an instrument is absent from the portfolio response,Both,Open,"The bot and the dashboard crash (KeyError / undefined) for an instrument that hasn't traded yet and is missing from the portfolio response."
+BUG-020,Order left in an unknown state on gateway timeout,Bot,Open,"When an order submission times out (504 GATEWAY_TIMEOUT) the order is left in an unknown state and is never reconciled."
+BUG-021,Timestamps displayed in UTC,Dashboard,Open,"Dashboard timestamps are in UTC; this has caused reconciliation errors against the ops team, who work in local time."

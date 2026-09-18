@@ -1,0 +1,28 @@
+# market_making.py — DISABLED skeleton (bonus).
+#
+# Commented out (see HANDOVER.md): the inventory skew is inverted. When the book
+# fills you long you want to LEAN ON the ask (quote it tighter/cheaper to sell
+# down) and back OFF the bid; when short-of-target, the reverse. The skeleton
+# below does it the wrong way round — fix the skew direction before enabling,
+# and rename this file to `market_making.py`.
+#
+# from .base import BaseStrategy, Signal
+#
+#
+# class MarketMakingStrategy(BaseStrategy):
+#     """Two-sided quoting with inventory skew around a fair mid."""
+#
+#     def __init__(self, symbol, config):
+#         super().__init__(symbol, config)
+#         self.spread_bps = int(config.get("spread_bps", 10))
+#         self.target_inventory = int(config.get("target_inventory", 0))
+#         self.max_inventory = int(config.get("max_inventory", 200))
+#
+#     def quotes(self, mid, position):
+#         half = mid * self.spread_bps // 20_000
+#         skew = (position - self.target_inventory) * self.skew_bps // 10_000
+#         # BUG: skew sign is inverted — this widens the ask when long instead of
+#         # tightening it, so inventory runs away instead of mean-reverting.
+#         bid = mid - half + skew
+#         ask = mid + half + skew
+#         return bid, ask

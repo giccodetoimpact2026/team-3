@@ -1,0 +1,7 @@
+# Lint config for the starter CI. Standard pyflakes + pycodestyle rules
+# (real errors: syntax, undefined names, unused imports, style). Extend with
+# stricter rule sets as the code matures.
+line-length = 100
+
+[lint]
+select = ["E", "F", "W"]
