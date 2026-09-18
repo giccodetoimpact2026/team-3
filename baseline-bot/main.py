@@ -506,6 +506,11 @@ def main():
                 strat.reset()
             exits.reset()
             book_cache.reset()
+            # The classifier's price history is per-window too: each window
+            # re-anchors the price engine, so a series spanning two would show
+            # a jump that happened in neither.
+            if classifier is not None and hasattr(classifier, "reset"):
+                classifier.reset()
             if news_engine:
                 news_engine.reset()
             state["session_id"] = new_id

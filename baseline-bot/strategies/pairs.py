@@ -112,13 +112,16 @@ class PairsFollowStrategy(BaseStrategy):
         """
         if not self.ready():
             return None
-        if not self.spread_ok():
-            return None
         last = self.prices[-1]
         if last <= 0:
             return None
 
         if self.armed:
+            # The spread gate applies to ENTRIES only — a wide book must never
+            # stop us reducing, or the illiquidity that made it wide traps the
+            # position.
+            if not self.spread_ok():
+                return None
             return Signal("buy", self.trade_quantity, self._limit_price(last, "buy"))
 
         if sellable > 0 and self._leader_rolled_over():

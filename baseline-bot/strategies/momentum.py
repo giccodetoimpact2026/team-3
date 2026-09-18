@@ -15,15 +15,17 @@ class MomentumStrategy(BaseStrategy):
     def signal(self, position: int):
         if not self.ready():
             return None
-        if not self.spread_ok():
-            return None
         first, last = self.prices[0], self.prices[-1]
         if first <= 0:
             return None
         change = (last - first) / first
 
         if change >= self.threshold:
-            # Upward momentum: open or add to the long.
+            # Upward momentum: open or add to the long. The spread gate applies
+            # to ENTRIES only — a wide book must never stop us reducing, or the
+            # illiquidity that made it wide traps the position.
+            if not self.spread_ok():
+                return None
             return Signal("buy", self.trade_quantity, self._limit_price(last, "buy"))
         if change <= -self.threshold and position > 0:
             # Momentum turned down and we hold: reduce/close.

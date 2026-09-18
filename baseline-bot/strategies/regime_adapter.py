@@ -37,3 +37,25 @@ class AtrRegimeClassifier(RegimeClassifier):
 
     def classify(self, symbol: str) -> str:
         return self._regimes.get(symbol, Regime.WARMUP)
+
+    def reset(self, symbol: str | None = None) -> None:
+        """Drop price history at a session boundary.
+
+        Each trading window re-anchors the price engine — every instrument
+        opens at its `starting_price`, and the API reference is explicit that a
+        series spanning two windows "would draw a jump that happened in
+        neither". Carried across a boundary that discontinuity reads as a SHOCK
+        (or a spurious TREND) precisely as the new window opens, which is when
+        the classifier has the most influence and the least real data.
+
+        Dropping the history returns every symbol to WARMUP, which forbids
+        entries until the new window has produced enough samples to classify.
+        """
+        if symbol is None:
+            self._classifiers.clear()
+            self._histories.clear()
+            self._regimes.clear()
+            return
+        self._classifiers.pop(symbol, None)
+        self._histories.pop(symbol, None)
+        self._regimes.pop(symbol, None)

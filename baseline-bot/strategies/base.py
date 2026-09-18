@@ -24,7 +24,8 @@ class BaseStrategy:
         self.lookback = int(config["lookback_samples"])
         self.trade_quantity = int(config["trade_quantity"])
         self.limit_offset_bps = int(config.get("limit_offset_bps", 5))
-        self.max_spread_bps = float(config["max_spread_bps"]) if "max_spread_bps" in config else None
+        spread_cap = config.get("max_spread_bps")
+        self.max_spread_bps = None if spread_cap is None else float(spread_cap)
         self.orderbook = None
         self.prices = deque(maxlen=self.lookback)
 
