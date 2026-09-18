@@ -23,6 +23,7 @@ may touch this concurrently.
 """
 import threading
 import time
+import uuid
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -116,6 +117,7 @@ class OrderManager:
         self._session_id = session_id
         self._blocked = False
         self._seq = 0
+        self._run = uuid.uuid4().hex[:8]
         # Set from GET /portfolio, which names its window — P3 can watch this
         # for a boundary without polling /session.
         self.last_seen_session_id = None
@@ -655,7 +657,9 @@ class OrderManager:
         and then only to look itself up.
         """
         self._seq += 1
-        return f"{self._session_id or 'nosession'}:{symbol}:{side}:{self._seq}"
+        # `_run` is a per-process nonce: a restart inside the same window would
+        # otherwise reissue key #1 and be refused with ORDER_DUPLICATE.
+        return f"{self._session_id or 'nosession'}:{self._run}:{symbol}:{side}:{self._seq}"
 
     # --- rate-limit bookkeeping ------------------------------------------
 

@@ -507,3 +507,10 @@ def test_flatten_leaves_an_unresolved_cancel_alone(manager, client):
     client.cancel_order.return_value = CancelResult(CancelOutcome.UNKNOWN, "o1")
     assert manager.flatten("NOVA", lambda qty: 4000) is None
     assert client.submit_limit_order.call_count == 1   # only the original sell
+
+
+def test_keys_differ_across_bot_restarts_in_the_same_session(client, clock):
+    risk = RiskLimits(500, 200, "NOVA", "ELXR")
+    first = OrderManager(client, risk, session_id="w1", clock=clock)
+    second = OrderManager(client, risk, session_id="w1", clock=clock)
+    assert first._next_key("NOVA", "buy") != second._next_key("NOVA", "buy")
