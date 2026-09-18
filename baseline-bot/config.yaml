@@ -278,12 +278,36 @@ risk:
 
 orderbook:
   stale_threshold_seconds: 5
+
+  # --- spread filter (how WIDE the book is) -------------------------------
+  # Refuses an ENTRY when the touch is wider than this. Exits are never gated:
+  # a wide book is exactly when you most want out.
   max_spread_bps:
     NOVA: 50
     ELXR: 50
     CRVX: 50
-    DRFT: 100
+    DRFT: 100                    # thin by nature — a tighter cap never trades
     AXON: 50
+
+  # --- liquidity filter (how DEEP the book is) ---------------------------
+  # Different question from the spread. Adeline Loh: "If we're getting lots of
+  # partial fills on NOVA, our sizing is too big for the book." So the entry
+  # clip is SHRUNK to the shares actually resting at or better than our limit,
+  # rather than sent at full size and partially filled.
+  #
+  # Depth excludes our own resting orders — an order crossing one comes back
+  # 409 SELF_MATCH, so our own size is not liquidity we can take.
+  #
+  # `min_depth_shares` is the floor below which an entry is not worth asking
+  # for at all: a 2-share fill on NOVA moves the price and tells us nothing.
+  # Roughly a fifth of each clip. Omit a symbol to disable its floor (it will
+  # still be sized down to available depth).
+  min_depth_shares:
+    NOVA: 10                     # clip 50
+    ELXR: 20                     # clip 100
+    CRVX: 20                     # clip 100
+    DRFT: 5                      # clip 10 — thin book, so a low bar
+    AXON: 10                     # clip 50
 
 news:
   enabled: true

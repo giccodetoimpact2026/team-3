@@ -51,12 +51,17 @@ class MeanReversionStrategy(BaseStrategy):
         deviation = (last - mean) / mean
 
         if deviation <= -self.buy_threshold:
-            # Below the mean: expect reversion up -> buy. The spread gate
-            # applies to ENTRIES only — a wide book must never stop us
-            # reducing, or the illiquidity that made it wide traps the position.
+            # Below the mean: expect reversion up -> buy. The spread and
+            # liquidity gates apply to ENTRIES only — a thin book must never
+            # stop us reducing, or the illiquidity that triggered them traps
+            # the position.
             if not self.spread_ok():
                 return None
-            return Signal("buy", self.trade_quantity, self._limit_price(last, "buy"))
+            limit = self._limit_price(last, "buy")
+            quantity = self.entry_size(limit)
+            if quantity <= 0:
+                return None
+            return Signal("buy", quantity, limit)
         if deviation >= self.sell_threshold and position > 0:
             # Above the mean and holding: take the reversion -> sell to close.
             qty = min(self.trade_quantity, position)
