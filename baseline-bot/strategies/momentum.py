@@ -15,6 +15,8 @@ class MomentumStrategy(BaseStrategy):
     def signal(self, position: int):
         if not self.ready():
             return None
+        if not self.spread_ok():
+            return None
         first, last = self.prices[0], self.prices[-1]
         if first <= 0:
             return None

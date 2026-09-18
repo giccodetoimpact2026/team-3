@@ -112,6 +112,8 @@ class PairsFollowStrategy(BaseStrategy):
         """
         if not self.ready():
             return None
+        if not self.spread_ok():
+            return None
         last = self.prices[-1]
         if last <= 0:
             return None

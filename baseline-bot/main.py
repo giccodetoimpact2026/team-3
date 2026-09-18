@@ -16,6 +16,7 @@ import yaml
 
 from exchange.client import ExchangeClient
 from exchange.feed import SSEFeed
+from exchange.orderbook import OrderBookCache
 from exchange.ratelimit import RollingWindow
 from orders.manager import OrderManager
 from risk.exits import ExitPolicy
@@ -418,9 +419,22 @@ def main():
                                      reserve=limits.get("shared_reserve", 40)),
     )
 
+    ob_cfg = config.get("orderbook", {})
+    book_cache = OrderBookCache(
+        stale_seconds=float(ob_cfg.get("stale_threshold_seconds", 5)),
+    )
+
+    # Attach book cache to each strategy for book-aware pricing + spread filter.
+    spread_limits = ob_cfg.get("max_spread_bps", {})
+    for sym, strat in strategies.items():
+        strat.orderbook = book_cache
+        if sym in spread_limits:
+            strat.max_spread_bps = float(spread_limits[sym])
+
     exits = ExitPolicy(
         config["risk"].get("exits", {}),
         limit_offset_bps=config["risk"].get("exit_limit_offset_bps", 25),
+        orderbook=book_cache,
     )
 
     # --- news engine -----------------------------------------------------------
@@ -471,6 +485,12 @@ def main():
 
     # --- event handlers -----------------------------------------------------
 
+    def on_book_update(payload):
+        symbol = payload.get("symbol")
+        if symbol:
+            book_cache.update(symbol, payload.get("bids", []),
+                              payload.get("asks", []))
+
     def on_session(payload):
         new_status = payload.get("status")
 
@@ -485,6 +505,7 @@ def main():
             for strat in strategies.values():
                 strat.reset()
             exits.reset()
+            book_cache.reset()
             if news_engine:
                 news_engine.reset()
             state["session_id"] = new_id
@@ -538,11 +559,13 @@ def main():
     feed = SSEFeed(config["exchange"]["base_url"], config["exchange"]["api_key"])
     worker = EventWorker({
         "session": on_session, "price": on_price, "announcement": on_announcement,
+        "book_update": on_book_update,
     })
     worker.start()
     feed.on("session", lambda payload: worker.submit("session", payload))
     feed.on("price", lambda payload: worker.submit("price", payload))
     feed.on("announcement", lambda payload: worker.submit("announcement", payload))
+    feed.on("book_update", lambda payload: worker.submit("book_update", payload))
     feed.start()
     log("bot started")
 

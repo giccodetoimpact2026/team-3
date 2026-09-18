@@ -227,6 +227,15 @@ risk:
   # beats the last basis point of price.
   exit_limit_offset_bps: 25
 
+orderbook:
+  stale_threshold_seconds: 5
+  max_spread_bps:
+    NOVA: 50
+    ELXR: 50
+    CRVX: 50
+    DRFT: 100
+    AXON: 50
+
 news:
   enabled: true
   cooldown_seconds: 60
