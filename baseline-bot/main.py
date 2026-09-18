@@ -15,6 +15,7 @@ from exchange.feed import SSEFeed
 from risk.limits import RiskLimits
 from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
+from utils.event_worker import EventWorker
 from utils.logger import log
 
 
@@ -81,8 +82,10 @@ def main():
         log(f"submitted {signal} for {symbol}")
 
     feed = SSEFeed(config["exchange"]["base_url"], config["exchange"]["api_key"])
-    feed.on("session", on_session)
-    feed.on("price", on_price)
+    worker = EventWorker({"session": on_session, "price": on_price})
+    worker.start()
+    feed.on("session", lambda payload: worker.submit("session", payload))
+    feed.on("price", lambda payload: worker.submit("price", payload))
     feed.start()
     log("bot started")
 
