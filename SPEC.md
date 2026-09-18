@@ -7,7 +7,11 @@ Implemented: BUG-001 shutdown cancellation, BUG-011 SSE reconnect/replay, BUG-01
 ELXR lookback 15, and the bot portion of BUG-019 (missing position = zero). Supporting
 work includes environment credentials, runtime symbol validation, per-symbol evaluation
 throttling, no pending-order stacking, unknown submission reconciliation, session-history
-reset, observation mode and sandbox-only trading unless live is explicitly enabled.
+reset, observation mode and sandbox-only trading unless live is explicitly enabled. A
+price-only regime classifier now emits warmup, compression, range, neutral, directional
+trend and directional shock results from ATR-like volatility and directional efficiency;
+it also reports regime transitions and explanatory metrics. It is not yet wired to select
+or size strategies.
 
 Acceptance: local strategy/runtime tests and lint pass; an authenticated sandbox check
 and trading smoke test remain pending a locally configured team key. No profitability
@@ -38,7 +42,8 @@ dashboard saw while open; a fill that happened while the page was closed appears
 single `FILLED` row. Per-fill realized P&L in the export is reconstructed from the
 session's fills and the current volume-weighted cost basis.
 
-Deferred from this increment: kill-switch UI, heartbeat health dot, ATR routing,
+Deferred from this increment: kill-switch UI, heartbeat health dot, regime routing and
+confirmation/hysteresis above the implemented classifier,
 additional instruments, stop-losses, portfolio caps and the AI/MCP conversational panel.
 These are unfinished, not removed from the overall hackathon scope. DRFT remains off.
 Emergency halt should be immediate; parameter changes need two-step confirmation.
