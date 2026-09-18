@@ -22,6 +22,7 @@ from orders.manager import OrderManager
 from risk.exits import ExitPolicy
 from risk.limits import RiskLimits
 from strategies.base import Signal
+from strategies.crash_buy import CrashBuyStrategy
 from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
 from news.engine import NewsEngine
@@ -86,6 +87,8 @@ def build_strategy(symbol, strat_cfg, built=None):
         return MomentumStrategy(symbol, strat_cfg)
     if kind == "mean_reversion":
         return MeanReversionStrategy(symbol, strat_cfg)
+    if kind == "crash_buy":
+        return CrashBuyStrategy(symbol, strat_cfg)
     if kind == "pairs_follow":
         leader_symbol = strat_cfg["leader"]
         leader = (built or {}).get(leader_symbol)

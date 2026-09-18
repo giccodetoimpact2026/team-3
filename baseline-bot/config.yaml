@@ -82,6 +82,30 @@ strategy:
     sell_deviation_threshold: 0.012
     trade_quantity: 10
     limit_offset_bps: 5
+  # --- crash_buy (strategies/crash_buy.py) — NOT YET ASSIGNED ---------------
+  # Scales aggressively into a sharp sell-off and sells the rebound. Built for
+  # the 13:42-type event (CRVX -17% in one candle, then a clean V-recovery).
+  # To try it, replace a liquid instrument's block with this one and set a
+  # stop_loss_pct for it under risk.exits — the strategy places no stop itself.
+  # NEVER on DRFT: on a thin book our own ladder would be the "rebound".
+  #
+  # CRVX:
+  #   type: crash_buy
+  #   lookback_samples: 30        # window whose high is the pre-crash reference
+  #   crash_drop_pct: 0.06        # 6% off the window high opens an episode
+  #   tranche_step_pct: 0.03      # tranche k needs a drop of k * 3%
+  #   tranche_scale: 1.5          # each tranche 1.5x the previous
+  #   max_tranches: 3             # 600 + 900 + 1350 = 2850 shares max per episode
+  #   confirm_samples: 2          # wait 2 prints without a new low before buying
+  #   recovery_fraction: 0.6      # sell once 60% of the gap to the reference is back
+  #   abandon_drop_pct: 0.25      # past -25% it is a repricing, not a dip: stop adding
+  #   trade_quantity: 600
+  #   sell_quantity: 1000         # unwind in bigger clips than we entered
+  #   limit_offset_bps: 5
+  #
+  # Check max_position for the symbol covers the full ladder, and the
+  # correlated_groups notional if the symbol is in one.
+
   AXON:
     type: pairs_follow
     leader: "NOVA"
@@ -131,6 +155,16 @@ regime:
       COMPRESSION: 0.5           # little deviation worth capturing
       SHOCK: 0.0                 # the move is information, not noise
       NEUTRAL: 0.5
+      WARMUP: 0.0
+    crash_buy:
+      # The one family that wants a SHOCK — the shock is its entry. TREND is
+      # halved not zeroed: the label is direction-blind here, and a dip in an
+      # uptrend is the good case.
+      TREND: 0.5
+      RANGE: 1.0
+      COMPRESSION: 0.5
+      SHOCK: 1.0
+      NEUTRAL: 1.0
       WARMUP: 0.0
     pairs_follow:
       # A follower reads its LEADER's regime: AXON's entry is triggered by NOVA

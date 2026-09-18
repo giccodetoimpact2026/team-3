@@ -56,7 +56,7 @@ baseline-bot/
 ├── config.yaml                 # exchange + per-instrument strategy + risk
 ├── main.py                     # wiring and the run loop
 ├── exchange/{client.py, feed.py}
-├── strategies/{base.py, momentum.py, mean_reversion.py, regime.py}
+├── strategies/{base.py, momentum.py, mean_reversion.py, pairs.py, crash_buy.py, regime.py}
 ├── risk/limits.py
 ├── utils/logger.py
 ├── tests/                      # starter strategy tests
