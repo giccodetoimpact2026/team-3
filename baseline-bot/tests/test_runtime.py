@@ -77,8 +77,7 @@ def test_resting_order_prevents_stacking(client, config):
 
 def test_position_cap(client, config):
     # Already at the configured primary cap: any additional buy must be blocked.
-    # Derived from config so this keeps biting when the cap is retuned (a fixed
-    # 500 passed vacuously once max_position_primary was raised to 4000).
+    # Derived from config so this keeps biting when the cap is retuned.
     client.get_positions.return_value = config["risk"]["max_position_primary"]
     bot, s = ready_bot(client, config, trade=True)
     bot.evaluate(s)

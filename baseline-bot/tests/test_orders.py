@@ -59,7 +59,8 @@ def client():
 @pytest.fixture
 def manager(client, clock):
     risk = RiskLimits(500, 200, "NOVA", "ELXR")
-    return OrderManager(client, risk, session_id="w1", clock=clock)
+    return OrderManager(client, risk, session_id="w1", clock=clock,
+                        submit_cooldown=0)
 
 
 # --- P0-01: a persistent signal must not stack orders --------------------
@@ -85,7 +86,8 @@ def test_symbol_unblocks_once_the_order_is_terminal(manager, client, clock):
 def test_cap_counts_pending_orders(client, clock):
     """Cap 500 at 100 a time: five resting buys, then refusal — even at 0 filled."""
     manager = OrderManager(client, RiskLimits(500, 200, "NOVA", "ELXR"),
-                           session_id="w1", max_active_per_symbol=99, clock=clock)
+                           session_id="w1", max_active_per_symbol=99, clock=clock,
+                           submit_cooldown=0)
     submitted = []
 
     def submit(symbol, side, quantity, price, key):
@@ -284,7 +286,7 @@ def test_order_rate_limit_defers_instead_of_being_refused(client, clock):
     manager = OrderManager(client, RiskLimits(10_000, 200, "NOVA", "ELXR"),
                            session_id="w1", max_active_per_symbol=99,
                            order_limiter=RollingWindow(3, 30.0, clock=clock),
-                           clock=clock)
+                           clock=clock, submit_cooldown=0)
     client.submit_limit_order.side_effect = lambda s, sd, q, p, k: SubmitResult(
         Outcome.ACKNOWLEDGED, k, order_id=k, status="OPEN", remaining_qty=q)
     for _ in range(6):

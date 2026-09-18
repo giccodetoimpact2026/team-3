@@ -51,13 +51,14 @@ strategy:
     # Same selectivity per unit of trend, better noise rejection (noise grows
     # with sqrt(N), trend with N).
     lookback_samples: 25
-    momentum_threshold: 0.02
+    momentum_threshold: 0.012
     trade_quantity: 400
     limit_offset_bps: 5
   ELXR:
     type: mean_reversion
     lookback_samples: 15
     deviation_threshold: 0.004
+    trend_guard: 0.003
     trade_quantity: 800
     limit_offset_bps: 5
     # DCA / scale-in. Mean-reversion is the one family where this belongs: the
@@ -137,8 +138,8 @@ strategy:
     # NOVA's exposure instead of offsetting it.
     lookback_samples: 5          # own buffer: only supplies the limit reference
     leader_breakout_samples: 10  # must be <= NOVA's lookback_samples
-    breakout_arm_samples: 5      # follow for this many of our own ticks
-    exit_drawdown: 0.004         # leader gives back 0.4% from its high -> close
+    breakout_arm_samples: 10     # follow for this many of our own ticks
+    exit_drawdown: 0.012         # leader gives back 1.2% from its high -> close
     trade_quantity: 400
     limit_offset_bps: 5
 
@@ -231,6 +232,8 @@ risk:
     AXON: 4000                   # follower, matches leader's cap
     DRFT: 400                    # thin book — kept small relative to others
 
+  order_cooldown_seconds: 3.0    # min seconds between orders for the same symbol
+
   # --- correlated groups (BUG-008) ----------------------------------------
   # Per-instrument caps can all be satisfied while the book is one directional
   # bet. Clarissa Ng: "NOVA and AXON move together; if we're long both we've
@@ -292,7 +295,7 @@ risk:
         arm_pct: 0.04
         trail_pct: 0.015
     ELXR:
-      stop_loss_pct: 0.015       # defensive, range-bound — tight stop, no target
+      stop_loss_pct: 0.03        # widened — 1.5% was causing repeated stop-outs
     DRFT:
       stop_loss_pct: 0.02        # thin book — exit before the spread eats it
       take_profit_pct: 0.04      # spikes then drops: take the spike

@@ -37,6 +37,7 @@ class MeanReversionStrategy(BaseStrategy):
             config.get("buy_deviation_threshold", symmetric))
         self.sell_threshold = float(
             config.get("sell_deviation_threshold", symmetric))
+        self.trend_guard = float(config.get("trend_guard", 0))
         if self.buy_threshold <= 0 or self.sell_threshold <= 0:
             raise ValueError(
                 f"{symbol}: deviation thresholds must be positive fractions")
@@ -75,6 +76,19 @@ class MeanReversionStrategy(BaseStrategy):
         return self.buy_threshold * (
             1 + self.tranches_held(position) * self.dca_step)
 
+    def _mean_declining(self) -> bool:
+        """True when the rolling mean is falling — the second half of the
+        lookback window sits below the first half by more than trend_guard."""
+        prices = list(self.prices)
+        half = len(prices) // 2
+        if half == 0:
+            return False
+        first_mean = sum(prices[:half]) / half
+        if first_mean <= 0:
+            return False
+        second_mean = sum(prices[half:]) / (len(prices) - half)
+        return second_mean < first_mean * (1 - self.trend_guard)
+
     def signal(self, position: int):
         if not self.ready():
             return None
@@ -93,6 +107,8 @@ class MeanReversionStrategy(BaseStrategy):
             # The spread and liquidity gates apply to ENTRIES only — a thin
             # book must never stop us reducing, or the illiquidity that
             # triggered them traps the position.
+            if self.trend_guard > 0 and self._mean_declining():
+                return None
             if not self.spread_ok():
                 return None
             limit = self._limit_price(last, "buy")

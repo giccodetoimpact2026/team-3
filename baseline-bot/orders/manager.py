@@ -75,7 +75,8 @@ class OrderManager:
     POLL_TTL = 1.0
 
     def __init__(self, client, risk, session_id=None, max_active_per_symbol=1,
-                 order_limiter=None, shared_limiter=None, clock=time.monotonic):
+                 order_limiter=None, shared_limiter=None, clock=time.monotonic,
+                 submit_cooldown=3.0):
         self._client = client
         self._risk = risk
         self._lock = threading.RLock()
@@ -83,6 +84,8 @@ class OrderManager:
         self._max_active = int(max_active_per_symbol)
         self._order_limiter = order_limiter
         self._shared_limiter = shared_limiter
+        self._submit_cooldown = float(submit_cooldown)
+        self._last_submit: dict[str, float] = {}
 
         self._active: dict[str, ActiveOrder] = {}
         self._unknown: dict[str, UnknownIntent] = {}
@@ -435,6 +438,10 @@ class OrderManager:
                 return None
             if len(self._active_ids(symbol)) >= self._max_active:
                 return None
+            if (self._submit_cooldown > 0
+                    and self._clock() - self._last_submit.get(symbol, 0)
+                    < self._submit_cooldown):
+                return None
 
         self.refresh_positions()
 
@@ -475,6 +482,7 @@ class OrderManager:
         with self._lock:
             if result.acknowledged:
                 self._unknown.pop(key, None)
+                self._last_submit[symbol] = self._clock()
                 self._record_ack(result, symbol, side, quantity, price, key)
             elif result.landed_nothing:
                 # 4xx, 429 and 500 are all definitive refusals: no order was

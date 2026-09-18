@@ -197,6 +197,7 @@ def test_liquidity_never_gates_an_exit(config):
 
 def test_mean_reversion_entry_is_sized_to_depth(config):
     strat = build_strategies(config)["ELXR"]
+    strat.trend_guard = 0  # Isolate depth sizing from the declining-trend gate.
     for _ in range(strat.lookback - 1):
         strat.on_price(10_000)
     strat.on_price(9_500)

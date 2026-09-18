@@ -193,3 +193,23 @@ def test_deepest_rung_is_reachable_before_the_stop_fires(config):
         assert deepest < stop, (
             f"{symbol}: deepest rung {deepest:.4f} is beyond the "
             f"{stop:.4f} stop — that tranche can never fill")
+
+
+@pytest.mark.parametrize("position", [0, 100, 200])
+def test_trend_guard_blocks_initial_and_additional_tranches(position):
+    strat = ladder()
+    for price in range(10_000, 8_500, -100):
+        strat.on_price(price)
+    assert strat.signal(position) is not None
+    strat.trend_guard = 0.001
+    assert strat.signal(position) is None
+
+
+def test_trend_guard_does_not_block_ladder_exit():
+    strat = ladder()
+    strat.trend_guard = 0.001
+    for price in [12_000] * 7 + [10_000] * 7 + [11_500]:
+        strat.on_price(price)
+    assert strat._mean_declining()
+    signal = strat.signal(200)
+    assert signal is not None and signal.side == "sell"

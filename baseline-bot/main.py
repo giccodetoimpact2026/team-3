@@ -444,6 +444,7 @@ def main():
         order_limiter=RollingWindow(limits.get("orders_per_window", 100), window),
         shared_limiter=RollingWindow(limits.get("shared_per_window", 300), window,
                                      reserve=limits.get("shared_reserve", 40)),
+        submit_cooldown=float(config["risk"].get("order_cooldown_seconds", 3.0)),
     )
 
     ob_cfg = config.get("orderbook", {})
