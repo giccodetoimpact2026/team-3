@@ -11,6 +11,7 @@ const http = require("http");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
+const { sendError } = require("./lib/respond.js");
 
 const PORT = Number(process.env.PORT || 5500);
 const EXCHANGE = new URL(process.env.EXCHANGE_BASE_URL || "https://api.codetoimpact.sg");
@@ -67,10 +68,7 @@ function proxy(req, res) {
       upRes.pipe(res);
     }
   );
-  up.on("error", function (err) {
-    res.writeHead(502, { "content-type": "application/json" });
-    res.end(JSON.stringify({ status: "error", error: { code: "PROXY_ERROR", message: err.message } }));
-  });
+  up.on("error", function (err) { sendError(res, 502, "PROXY_ERROR", err.message); });
   res.on("close", function () { up.destroy(); }); // drop the upstream SSE when the tab goes (req "close" fires after the body is read, too early)
   req.pipe(up);
 }
@@ -88,10 +86,7 @@ function proxyBot(req, res) {
     }
   );
   up.setTimeout(10000, function () { up.destroy(new Error("bot control timeout")); });
-  up.on("error", function (err) {
-    res.writeHead(502, { "content-type": "application/json" });
-    res.end(JSON.stringify({ status: "error", error: { code: "BOT_UNREACHABLE", message: err.message } }));
-  });
+  up.on("error", function (err) { sendError(res, 502, "BOT_UNREACHABLE", err.message); });
   req.pipe(up);
 }
 
@@ -115,10 +110,7 @@ function proxyLlm(req, res) {
     }
   );
   up.setTimeout(60000, function () { up.destroy(new Error("LLM service timeout")); });
-  up.on("error", function (err) {
-    res.writeHead(502, { "content-type": "application/json" });
-    res.end(JSON.stringify({ status: "error", error: { code: "LLM_UNREACHABLE", message: err.message } }));
-  });
+  up.on("error", function (err) { sendError(res, 502, "LLM_UNREACHABLE", err.message); });
   req.pipe(up);
 }
 
