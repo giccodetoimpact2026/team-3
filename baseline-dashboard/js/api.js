@@ -13,4 +13,17 @@ const ExchangeAPI = {
       return resp && resp.data ? resp.data : resp;
     });
   },
+
+  // GET /instruments -> [{symbol, name, sector, ...}]. Call once at startup
+  // (and on a session change); names can change between days.
+  getInstruments: function () {
+    return $.ajax({
+      url: CONFIG.API_BASE_URL + "/instruments",
+      method: "GET",
+      dataType: "json",
+      headers: { "X-API-Key": CONFIG.API_KEY },
+    }).then(function (resp) {
+      return resp && resp.data ? resp.data : resp;
+    });
+  },
 };
