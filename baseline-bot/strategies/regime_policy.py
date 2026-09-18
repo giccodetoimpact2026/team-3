@@ -156,7 +156,7 @@ class RegimePolicy:
 
     def __init__(self, config: dict | None = None):
         config = config or {}
-        self.enabled = bool(config.get("enabled", False))
+        self.enabled = bool(config.get("enabled", True))
 
         self._policy = {family: dict(table)
                         for family, table in DEFAULT_POLICY.items()}
