@@ -17,9 +17,11 @@ from exchange.client import ExchangeClient
 from exchange.feed import SSEFeed
 from exchange.ratelimit import RollingWindow
 from orders.manager import OrderManager
+from risk.exits import ExitPolicy
 from risk.limits import RiskLimits
 from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
+from strategies.pairs import PairsFollowStrategy
 from utils.control import ControlServer
 from utils.event_worker import EventWorker
 from utils.logger import log
@@ -44,12 +46,117 @@ def load_config():
     return config
 
 
-def build_strategy(symbol, strat_cfg):
-    if strat_cfg["type"] == "momentum":
+def build_strategy(symbol, strat_cfg, built=None):
+    """Construct one strategy.
+
+    `built` supplies the already-constructed strategies, needed only by types
+    that read another instrument's price series (pairs_follow reads its leader).
+    """
+    kind = strat_cfg["type"]
+    if kind == "momentum":
         return MomentumStrategy(symbol, strat_cfg)
-    if strat_cfg["type"] == "mean_reversion":
+    if kind == "mean_reversion":
         return MeanReversionStrategy(symbol, strat_cfg)
-    raise ValueError(f"unknown strategy type: {strat_cfg['type']}")
+    if kind == "pairs_follow":
+        leader_symbol = strat_cfg["leader"]
+        leader = (built or {}).get(leader_symbol)
+        if leader is None:
+            raise ValueError(
+                f"{symbol}: leader {leader_symbol!r} is not an active strategy; "
+                f"add it to instruments.active and strategy")
+        return PairsFollowStrategy(symbol, strat_cfg, leader)
+    raise ValueError(f"unknown strategy type: {kind}")
+
+
+def build_strategies(config):
+    """Build every active strategy, resolving followers after their leaders.
+
+    Two passes rather than one: a follower holds a reference to its leader's
+    live price buffer, so leaders must exist first regardless of the order
+    symbols happen to appear in config.
+    """
+    active = config["instruments"]["active"]
+    wanted = [active["primary"], active["secondary"]]
+    # Extras are optional — an instrument listed without a strategy block is
+    # simply not traded, which is how a name gets parked without code changes.
+    wanted += [s for s in active.get("extra", []) if s in config["strategy"]]
+
+    strategies = {}
+    deferred = []
+    for symbol in wanted:
+        strat_cfg = config["strategy"][symbol]
+        if strat_cfg["type"] == "pairs_follow":
+            deferred.append(symbol)
+        else:
+            strategies[symbol] = build_strategy(symbol, strat_cfg)
+    for symbol in deferred:
+        strategies[symbol] = build_strategy(
+            symbol, config["strategy"][symbol], strategies)
+    return strategies
+
+
+def make_price_handler(strategies, orders, state, lifecycle, exits=None):
+    """Build the handler for `price` events.
+
+    Module level rather than a closure inside main() so the trading path can be
+    exercised without standing up the feed, the worker and the control server.
+
+    Every order goes through OrderManager and only OrderManager. Submitting
+    directly from here would bypass the one-active-order-per-symbol policy, the
+    position cap measured against pending exposure, the unreconciled-key gate,
+    the cash pre-check and the rate limiter.
+    """
+    def on_price(payload):
+        if lifecycle["value"] != RUNNING:
+            return
+
+        symbol = payload.get("symbol")
+        strat = strategies.get(symbol)
+        if strat is None:
+            return
+        strat.on_price(payload["last_price"])
+        # Feed the mark even when the session is closed: correlated-group
+        # exposure is measured in notional, and a symbol that has not ticked
+        # this window would otherwise be valued at 0.
+        orders.record_mark(symbol, payload["last_price"])
+        if not state["session_open"]:
+            return
+
+        # NOTE(P1): this still runs inside the SSE listener thread. Once the
+        # bounded event queue lands, everything below moves to the trading
+        # worker — OrderManager is thread-safe and does not care which thread
+        # calls it, but the REST calls must not block feed ingestion.
+        orders.poll()
+
+        # Held shares net of those reserved by our own resting sells. Both the
+        # exit check and the strategy's sell branch size off this, so neither
+        # oversells into a 400 INSUFFICIENT_POSITION. The buy-side cap is
+        # enforced inside OrderManager against projected exposure.
+        sellable = orders.available_to_sell(symbol)
+
+        # Stop-loss / take-profit run BEFORE the strategy and return instead of
+        # it. An exit the strategy can veto is not an exit — momentum riding a
+        # loser would simply never produce the sell. The mark is the live SSE
+        # print rather than the portfolio's ~1s cached one: an exit wants the
+        # freshest price available.
+        if exits is not None:
+            forced = exits.check(symbol, orders.avg_cost(symbol),
+                                 int(payload["last_price"]), sellable)
+            if forced is not None:
+                log(f"exit: {forced}")
+                orders.submit_intent(symbol, "sell", forced.quantity,
+                                     forced.limit_price)
+                return
+
+        signal = strat.signal(sellable)
+        if signal is None:
+            return
+
+        # Refusals, rejections and unknowns are all logged by OrderManager.
+        # Nothing is reported as submitted unless the exchange acknowledged it.
+        orders.submit_intent(symbol, signal.side, signal.quantity, signal.limit_price)
+
+    return on_price
 
 
 # ---------------------------------------------------------------------------
@@ -114,19 +221,13 @@ class Bot:
 
         primary = config["instruments"]["active"]["primary"]
         secondary = config["instruments"]["active"]["secondary"]
-        extra = config["instruments"]["active"].get("extra", [])
-        self.strategies = {
-            primary: build_strategy(primary, config["strategy"][primary]),
-            secondary: build_strategy(secondary, config["strategy"][secondary]),
-        }
-        for sym in extra:
-            if sym in config["strategy"]:
-                self.strategies[sym] = build_strategy(sym, config["strategy"][sym])
+        self.strategies = build_strategies(config)
         self.risk = RiskLimits(
             config["risk"]["max_position_primary"],
             config["risk"]["max_position_secondary"],
             primary, secondary,
             extra_limits=config["risk"].get("max_position", {}),
+            correlated_groups=config["risk"].get("correlated_groups", {}),
         )
 
     def evaluate(self, strategy):
@@ -134,7 +235,7 @@ class Bot:
         new_id = session.get("id")
         if new_id and new_id != self.session_id:
             for s in self.strategies.values():
-                s.prices.clear()
+                s.reset()
             self.session_id = new_id
 
         if session.get("mode") == "live":
@@ -205,19 +306,13 @@ def main():
 
     primary = config["instruments"]["active"]["primary"]
     secondary = config["instruments"]["active"]["secondary"]
-    extra = config["instruments"]["active"].get("extra", [])
-    strategies = {
-        primary: build_strategy(primary, config["strategy"][primary]),
-        secondary: build_strategy(secondary, config["strategy"][secondary]),
-    }
-    for sym in extra:
-        if sym in config["strategy"]:
-            strategies[sym] = build_strategy(sym, config["strategy"][sym])
+    strategies = build_strategies(config)
     risk = RiskLimits(
         config["risk"]["max_position_primary"],
         config["risk"]["max_position_secondary"],
         primary, secondary,
         extra_limits=config["risk"].get("max_position", {}),
+        correlated_groups=config["risk"].get("correlated_groups", {}),
     )
 
     limits = config.get("rate_limits", {})
@@ -230,9 +325,20 @@ def main():
                                      reserve=limits.get("shared_reserve", 40)),
     )
 
-    # Report starting positions.
-    for sym in strategies:
-        log(f"{sym} starting position: {client.get_positions(sym)}")
+    exits = ExitPolicy(
+        config["risk"].get("exits", {}),
+        limit_offset_bps=config["risk"].get("exit_limit_offset_bps", 25),
+    )
+
+    # Report starting positions and the risk parameters in force. Priya: "if I
+    # can't see the risk parameters, they might as well not exist."
+    for sym, strat in strategies.items():
+        log(f"{sym} [{type(strat).__name__}] starting position: "
+            f"{client.get_positions(sym)}, cap {risk.max_position(sym)}, "
+            f"exits {exits.levels(sym)}")
+    for name, group in risk.groups().items():
+        log(f"correlated group {name}: {'+'.join(group['symbols'])} capped at "
+            f"{group['max_notional_cents']} cents notional")
 
     # --- shared state -------------------------------------------------------
     state = {
@@ -269,37 +375,11 @@ def main():
         if new_id and new_id != state["session_id"]:
             log(f"session boundary: {state['session_id']} -> {new_id} — resetting strategies")
             for strat in strategies.values():
-                strat.prices.clear()
+                strat.reset()
+            exits.reset()
             state["session_id"] = new_id
 
-    def on_price(payload):
-        if lifecycle["value"] != RUNNING:
-            return
-
-        symbol = payload.get("symbol")
-        strat = strategies.get(symbol)
-        if strat is None:
-            return
-        strat.on_price(payload["last_price"])
-        if not state["session_open"]:
-            return
-        # NOTE(P1): this still runs inside the SSE listener thread. Once the
-        # bounded event queue lands, everything below moves to the trading
-        # worker — OrderManager is thread-safe and does not care which thread
-        # calls it, but the REST calls must not block feed ingestion.
-        orders.poll()
-        # The strategies take one `position` argument, used only to decide
-        # whether they may sell and how much. Pass what is actually sellable —
-        # held shares minus those already reserved by our own resting sells —
-        # rather than the gross long, which oversells into INSUFFICIENT_POSITION.
-        # The buy-side cap is enforced inside OrderManager against projected
-        # exposure, which includes pending orders.
-        signal = strat.signal(orders.available_to_sell(symbol))
-        if signal is None:
-            return
-        # Refusals, rejections and unknowns are all logged by OrderManager.
-        # Nothing is reported as submitted unless the exchange acknowledged it.
-        orders.submit_intent(symbol, signal.side, signal.quantity, signal.limit_price)
+    on_price = make_price_handler(strategies, orders, state, lifecycle, exits)
 
     def on_announcement(payload):
         # Announcements are logged only; no strategy reacts to them yet.

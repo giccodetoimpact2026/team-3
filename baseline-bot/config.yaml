@@ -3,6 +3,26 @@
 # Switch sandbox <-> live by pointing base_url at the right exchange and using
 # the matching api_key. Treat sandbox as dev and live as prod: develop and test
 # against sandbox, never against the live session.
+#
+# STRATEGY ASSIGNMENTS come from the pre-read, not from taste:
+#
+#   NOVA  Oil & Gas, trending, event-sensitive   -> momentum, WIDE lookback
+#         "it moves slow and far" (Derek Tan); James p.1 "trending names ...
+#         use a wider lookback than the fast names".
+#   AXON  Logistics, correlated with NOVA        -> leader-follower off NOVA
+#         "energy costs drive freight, so use NOVA as a leading signal: NOVA
+#         breaks a new high, go long AXON" (Derek); James p.4.
+#   CRVX  Semiconductors, growth                 -> momentum, narrower lookback
+#         "behaves like a growth/momentum name" (James p.4). Faster than NOVA,
+#         so a tighter window than NOVA's by the same page-1 rule.
+#   ELXR  Pharma, defensive, range-bound         -> mean-reversion, lookback 15
+#         "Lookback = 15 samples. This is important ... Use 15." (James p.2,
+#         and Adeline Loh's top bug).
+#   DRFT  Defense, event-driven, THIN book       -> mean-reversion, tiny size
+#         "moves on announcements, not on the others -- handle separately and
+#         size it small, your own orders move its price" (James p.4). Momentum
+#         is the wrong shape here: on a book this thin the bot's own buys lift
+#         the last price, which momentum then reads as its own signal.
 
 exchange:
   base_url: "https://api.codetoimpact.sg"   # sandbox/live URL from the platform team
@@ -20,8 +40,13 @@ instruments:
 strategy:
   NOVA:
     type: momentum
-    lookback_samples: 10
-    momentum_threshold: 0.008
+    # Momentum is (last - first) / first over the window, so a wider window
+    # measures a larger change for the same trend. Holding the required SLOPE
+    # constant when widening 10 -> 25: 0.008/10 = 0.0008 per sample, x25 = 0.02.
+    # Same selectivity per unit of trend, better noise rejection (noise grows
+    # with sqrt(N), trend with N).
+    lookback_samples: 25
+    momentum_threshold: 0.02
     trade_quantity: 50
     limit_offset_bps: 5
   ELXR:
@@ -32,30 +57,117 @@ strategy:
     limit_offset_bps: 5
   CRVX:
     type: momentum
-    lookback_samples: 10
-    momentum_threshold: 0.005
-    trade_quantity: 200
+    # Growth name: moves faster than NOVA, so a narrower window. Slope-preserved
+    # from the previous 0.005/10: 0.0005 per sample x15 = 0.0075.
+    lookback_samples: 15
+    momentum_threshold: 0.0075
+    trade_quantity: 100
     limit_offset_bps: 5
   DRFT:
-    type: momentum
-    lookback_samples: 10
-    momentum_threshold: 0.005
-    trade_quantity: 200
+    type: mean_reversion
+    # "It spikes on volume then drops" (Ethan, junior trader) — a spike-and-
+    # revert profile, so buy the trough rather than chase the spike. The band is
+    # wide because a thin name "will look more volatile per sample even when
+    # nothing is happening" (James p.3).
+    lookback_samples: 15
+    deviation_threshold: 0.015
+    trade_quantity: 10
     limit_offset_bps: 5
   AXON:
-    type: mean_reversion
-    lookback_samples: 15
-    deviation_threshold: 0.004
-    trade_quantity: 100
+    type: pairs_follow
+    leader: "NOVA"
+    # Long-only, so this is a correlated long, not a hedged pair: it stacks on
+    # NOVA's exposure instead of offsetting it.
+    lookback_samples: 5          # own buffer: only supplies the limit reference
+    leader_breakout_samples: 10  # must be <= NOVA's lookback_samples
+    breakout_arm_samples: 5      # follow for this many of our own ticks
+    exit_drawdown: 0.004         # leader gives back 0.4% from its high -> close
+    trade_quantity: 50
     limit_offset_bps: 5
 
 risk:
-  max_position_primary: 500
-  max_position_secondary: 400
+  # --- position caps ------------------------------------------------------
+  # Not cash-binding: all caps filled at once is ~2100 shares, and at $60-$300
+  # that is well under the $10M a window opens with. They are concentration
+  # limits, so they are sized by conviction and by how much damage the name can
+  # do. Winston: prioritise NOVA and ELXR for stability; "AXON and CRVX are
+  # enhancements". Enhancements therefore do not get bigger books than the
+  # primary.
+  max_position_primary: 500      # NOVA
+  max_position_secondary: 400    # ELXR
   max_position:
-    CRVX: 1500
-    DRFT: 1500
-    AXON: 2000
+    CRVX: 600                    # enhancement, momentum — modest
+    AXON: 500                    # follower must not exceed its leader's cap
+    DRFT: 100                    # ~1/5 of NOVA, per Priya Sundaram
+
+  # --- correlated groups (BUG-008) ----------------------------------------
+  # Per-instrument caps can all be satisfied while the book is one directional
+  # bet. Clarissa Ng: "NOVA and AXON move together; if we're long both we've
+  # doubled a position." AXON's strategy makes that literal — it follows NOVA's
+  # breakout and the exchange is long-only, so it stacks on NOVA instead of
+  # hedging it.
+  #
+  # Capped in NOTIONAL CENTS, not shares: a share count cannot express joint
+  # exposure across instruments at different prices. Measured against each
+  # member's projected position (pending orders included) at its live mark.
+  #
+  # Sizing: NOVA 500 + AXON 500 shares, at the $60-$300 range instruments open
+  # in, is $60,000-$300,000 of one theme. 15,000,000 cents ($150,000) binds in
+  # the upper half of that range and leaves the lower half to the per-symbol
+  # caps. Re-check against actual opening prices on sandbox.
+  correlated_groups:
+    energy_freight:
+      symbols: ["NOVA", "AXON"]
+      max_notional_cents: 15000000
+
+  # --- exits --------------------------------------------------------------
+  # Fractions of the cost basis the exchange reports in
+  # GET /portfolio -> positions[].avg_cost. Every leg is a SELL that reduces or
+  # closes a held long; the exchange is long-only, so there is no protective
+  # stop on a short. Checked on every price event, and they OVERRIDE the
+  # strategy signal rather than competing with it.
+  #
+  # Which take-profit suits a name depends on its strategy:
+  #
+  #   momentum / follower -> TRAILING. A fixed target caps exactly the upside
+  #     momentum exists to capture. A trail lets the winner run and exits once
+  #     it gives back trail_pct from its high-water mark. It also closes a real
+  #     gap: momentum's own exit needs the whole window return to turn negative,
+  #     which on a 25-sample window means handing back most of the move first.
+  #
+  #   spike-and-revert (DRFT) -> FIXED. A trail sells into the drop on a thin
+  #     book; take the spike at a level instead.
+  #
+  #   mean-reversion (ELXR) -> NONE. Selling when price runs above the mean is
+  #     already that strategy's exit, so a fixed level would only fight it.
+  #
+  # A symbol omitted here has no exits at all, deliberately: nothing should
+  # guess at a risk tolerance nobody set. Tune on sandbox — these are starting
+  # points, not measured values.
+  exits:
+    NOVA:
+      stop_loss_pct: 0.03        # trending, moves slow and far — wide stop
+      trailing_take_profit:
+        arm_pct: 0.04            # only trail once up 4% from cost
+        trail_pct: 0.015         # then exit on a 1.5% give-back from the peak
+    CRVX:
+      stop_loss_pct: 0.04        # growth name, widest of the liquid names
+      trailing_take_profit:
+        arm_pct: 0.05
+        trail_pct: 0.02
+    AXON:
+      stop_loss_pct: 0.03        # follows NOVA, so tracks NOVA's levels
+      trailing_take_profit:
+        arm_pct: 0.04
+        trail_pct: 0.015
+    ELXR:
+      stop_loss_pct: 0.015       # defensive, range-bound — tight stop, no target
+    DRFT:
+      stop_loss_pct: 0.02        # thin book — exit before the spread eats it
+      take_profit_pct: 0.04      # spikes then drops: take the spike
+  # An exit concedes more of the spread than a strategy order — getting out
+  # beats the last basis point of price.
+  exit_limit_offset_bps: 25
 
 control:
   # Local kill-switch endpoint consumed by the dashboard (via its /bot/* proxy).

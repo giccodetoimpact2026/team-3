@@ -30,8 +30,12 @@ def ready_bot(client, config, **kwargs):
     bot = Bot(client, config, **kwargs)
     bot.session_id = "window-1"
     s = bot.strategies["NOVA"]
-    for p in range(10000, 11000, 100):
-        s.on_price(p)
+    # Fill exactly the configured lookback with a clear uptrend, so these tests
+    # keep exercising a live signal when the window is retuned. A fixed 10
+    # samples stopped filling the buffer when NOVA widened to 25, and every
+    # "assert not submitted" case below then passed vacuously.
+    for i in range(s.lookback):
+        s.on_price(10_000 + i * 100)
     return bot, s
 
 

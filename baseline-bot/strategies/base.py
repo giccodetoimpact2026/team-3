@@ -32,6 +32,15 @@ class BaseStrategy:
     def ready(self) -> bool:
         return len(self.prices) >= self.lookback
 
+    def reset(self):
+        """Drop per-window state at a session boundary.
+
+        Prices belong to the window they were observed in, so carrying them
+        across a boundary trades the previous window's series. Subclasses that
+        hold extra state must extend this, not just clear `prices`.
+        """
+        self.prices.clear()
+
     def signal(self, position: int):
         """Return a Signal or None given the current held position (shares)."""
         raise NotImplementedError
