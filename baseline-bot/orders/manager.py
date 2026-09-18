@@ -76,7 +76,7 @@ class OrderManager:
 
     def __init__(self, client, risk, session_id=None, max_active_per_symbol=1,
                  order_limiter=None, shared_limiter=None, clock=time.monotonic,
-                 submit_cooldown=3.0):
+                 submit_cooldown=3.0, anomaly_limiter=None):
         self._client = client
         self._risk = risk
         self._lock = threading.RLock()
@@ -85,6 +85,7 @@ class OrderManager:
         self._order_limiter = order_limiter
         self._shared_limiter = shared_limiter
         self._submit_cooldown = float(submit_cooldown)
+        self._anomaly_limiter = anomaly_limiter
         self._last_submit: dict[str, float] = {}
 
         self._active: dict[str, ActiveOrder] = {}
@@ -468,6 +469,11 @@ class OrderManager:
 
             if self._order_limiter and not self._order_limiter.acquire():
                 log(f"{symbol}: intent deferred, order rate window spent")
+                return None
+
+            if self._anomaly_limiter and not self._anomaly_limiter.acquire():
+                self._blocked = True
+                log("ANOMALY: runaway order rate — auto-paused; restart required")
                 return None
 
             key = self._next_key(symbol, side)
