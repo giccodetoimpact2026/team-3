@@ -285,8 +285,12 @@ def make_price_handler(strategies, orders, state, lifecycle, exits=None,
                     log(f"news: suppressing sell for {symbol} (bullish bias)")
                     return
                 if bias.action == "sell" and signal.side == "buy":
-                    log(f"news: suppressing buy for {symbol} (bearish bias)")
-                    return
+                    if isinstance(strat, CrashBuyStrategy):
+                        log(f"news: bearish bias for {symbol} but crash_buy "
+                            f"buys INTO sell-offs — allowing buy")
+                    else:
+                        log(f"news: suppressing buy for {symbol} (bearish bias)")
+                        return
                 if bias.action == signal.side:
                     signal.quantity = max(signal.quantity, news_qty)
             elif last_price is not None:
@@ -295,10 +299,14 @@ def make_price_handler(strategies, orders, state, lifecycle, exits=None,
                     signal = Signal("buy", news_qty, last_price + offset)
                     log(f"news: generating buy for {symbol} (bullish bias, no strategy signal)")
                 elif bias.action == "sell" and sellable > 0:
-                    sell_qty = min(news_qty, sellable)
-                    offset = last_price * strat.limit_offset_bps // 10_000
-                    signal = Signal("sell", sell_qty, last_price - offset)
-                    log(f"news: generating sell for {symbol} (bearish bias, no strategy signal)")
+                    if isinstance(strat, CrashBuyStrategy):
+                        log(f"news: skipping generated sell for {symbol} — "
+                            f"crash_buy manages its own exit")
+                    else:
+                        sell_qty = min(news_qty, sellable)
+                        offset = last_price * strat.limit_offset_bps // 10_000
+                        signal = Signal("sell", sell_qty, last_price - offset)
+                        log(f"news: generating sell for {symbol} (bearish bias, no strategy signal)")
 
         if signal is None:
             return
