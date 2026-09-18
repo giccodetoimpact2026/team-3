@@ -153,8 +153,12 @@ def test_built_strategies_only_ladder_where_configured(config):
     strategies = build_strategies(config)
     assert strategies["ELXR"].max_tranches == 3
     assert strategies["DRFT"].max_tranches == 3
+    # The momentum names also bound their scale-in, but that is NOT a ladder:
+    # `required_deviation` is what makes a rung demand a deeper ADVERSE move,
+    # and momentum must never have it. `max_tranches` alone is just a cap on
+    # how many times a strategy may add, which both kinds of strategy want.
     for symbol in ("NOVA", "CRVX", "AXON"):
-        assert not hasattr(strategies[symbol], "max_tranches"), symbol
+        assert not hasattr(strategies[symbol], "required_deviation"), symbol
 
 
 def test_full_ladder_stays_within_the_position_cap(config):
