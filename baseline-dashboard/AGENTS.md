@@ -16,11 +16,17 @@ an existing codebase**, not starting fresh. The authoritative specs are:
 
 ## What we're building (this repo)
 
-Dashboard — replace 30s polling with the exchange **SSE** feed, clear stale DOM on
-reconnect, show **SGT** timestamps, be robust to missing instruments, add a
-**heartbeat-based** health dot and an always-visible **kill switch**, a
-conversational **MCP panel** (cite the tool + show confidence), and a predictive
+Dashboard. Done: SSE feed instead of polling, stale DOM cleared on reconnect,
+SGT timestamps, dynamic instruments, session counters, per-instrument P&L via
+MCP (with `/portfolio` fallback), order lifecycle table, Gerald's CSV export.
+Open: a **heartbeat-based** health dot, an always-visible **kill switch**, the
+conversational **MCP panel** (cite the tool + show confidence), a predictive
 view. See `HANDOVER.md` for what's rough and what's a stub.
+
+Module map: `format.js` (money/SGT), `view.js` (position rows, SSE cursor,
+HTML escaping), `trades.js` (lifecycle history, counters, cost basis, CSV),
+`mcp.js` (MCP REST facade), `api.js` (exchange REST), `dashboard.js`
+(controller + DOM). Keep new logic in the pure modules and test it in Node.
 
 ## Ground rules (do not violate)
 

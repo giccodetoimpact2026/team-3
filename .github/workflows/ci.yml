@@ -1,0 +1,24 @@
+# Repo-root CI. GitHub only runs workflows under the repo-root .github/, so the
+# per-project starter workflows (baseline-*/.github/workflows/ci.yml) are
+# mirrored here as jobs. Paths filters keep each job to its own project.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: baseline-dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Syntax check
+        run: npm run check
+      - name: Test
+        run: npm test
