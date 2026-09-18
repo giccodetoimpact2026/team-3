@@ -306,7 +306,8 @@ def make_price_handler(strategies, orders, state, lifecycle, exits=None,
                         sell_qty = min(news_qty, sellable)
                         offset = last_price * strat.limit_offset_bps // 10_000
                         signal = Signal("sell", sell_qty, last_price - offset)
-                        log(f"news: generating sell for {symbol} (bearish bias, no strategy signal)")
+                        log(f"news: generating sell for {symbol} "
+                            "(bearish bias, no strategy signal)")
 
         if signal is None:
             return
