@@ -114,14 +114,19 @@ class Bot:
 
         primary = config["instruments"]["active"]["primary"]
         secondary = config["instruments"]["active"]["secondary"]
+        extra = config["instruments"]["active"].get("extra", [])
         self.strategies = {
             primary: build_strategy(primary, config["strategy"][primary]),
             secondary: build_strategy(secondary, config["strategy"][secondary]),
         }
+        for sym in extra:
+            if sym in config["strategy"]:
+                self.strategies[sym] = build_strategy(sym, config["strategy"][sym])
         self.risk = RiskLimits(
             config["risk"]["max_position_primary"],
             config["risk"]["max_position_secondary"],
             primary, secondary,
+            extra_limits=config["risk"].get("max_position", {}),
         )
 
     def evaluate(self, strategy):
@@ -200,14 +205,19 @@ def main():
 
     primary = config["instruments"]["active"]["primary"]
     secondary = config["instruments"]["active"]["secondary"]
+    extra = config["instruments"]["active"].get("extra", [])
     strategies = {
         primary: build_strategy(primary, config["strategy"][primary]),
         secondary: build_strategy(secondary, config["strategy"][secondary]),
     }
+    for sym in extra:
+        if sym in config["strategy"]:
+            strategies[sym] = build_strategy(sym, config["strategy"][sym])
     risk = RiskLimits(
         config["risk"]["max_position_primary"],
         config["risk"]["max_position_secondary"],
         primary, secondary,
+        extra_limits=config["risk"].get("max_position", {}),
     )
 
     limits = config.get("rate_limits", {})
