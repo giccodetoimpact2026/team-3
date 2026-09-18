@@ -61,6 +61,7 @@ class ExchangeClient:
         self.base_url = base_url.rstrip("/")
         self.session = requests.Session()
         self.session.headers.update({"X-API-Key": api_key})
+        self.session.verify = False
 
     # --- reads ------------------------------------------------------------
     def get_instruments(self):
@@ -199,11 +200,6 @@ class ExchangeClient:
                                 code=code or "INTERNAL_ERROR", rate_remaining=remaining)
         return SubmitResult(Outcome.REJECTED, idempotency_key, code=code or "REJECTED",
                             rate_remaining=remaining)
-
-    def get_session(self):
-        r = self.session.get(f"{self.base_url}/session", timeout=5)
-        r.raise_for_status()
-        return _data(r.json())
 
     def cancel_order(self, order_id: str) -> CancelResult:
         """Cancel one resting order. Never raises.

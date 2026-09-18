@@ -83,6 +83,7 @@ class SSEFeed:
             headers=self._connection_headers(),
             stream=True,
             timeout=(5, 30),
+            verify=False,
         )
         self._response = response
         try:
