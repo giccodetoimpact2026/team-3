@@ -4,7 +4,6 @@
 const CONFIG = {
   API_BASE_URL: "/exchange", // same-origin proxy in server.js -> https://api.codetoimpact.sg (adds the key, fixes CORS)
   API_KEY: "", // not needed in the browser; server.js injects it
-  POLL_INTERVAL_MS: 30000, // 30s — intentionally slow; the exchange SSE feed is the fix (M1)
+  REFRESH_MIN_INTERVAL_MS: 1000, // portfolio re-read is triggered by SSE price events, coalesced to at most one per second (shared 300/30s read tier)
   MCP_BASE_URL: "http://localhost:8090", // provided read-only MCP server (M4) — 8090, not the exchange's 8080
-  INSTRUMENTS_TO_SHOW: ["NOVA", "ELXR"], // hardcoded; the full set comes from GET /instruments
 };
