@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Team 3 — Bot progress</title>
+<style>body{font:20px system-ui;max-width:900px;margin:60px auto;padding:24px;background:#101827;color:#edf3fc}h1,h2{color:#70ddbb}li{margin:12px 0}section{margin:48px 0}</style>
+<h1>Trading bot: reliable startup first</h1>
+<p>Working submission draft. Registered team name and members pending.</p>
+<section><h2>Delivered</h2><ul><li>NOVA momentum and corrected 15-sample ELXR mean reversion.</li><li>SSE reconnection and replay; missing positions default to zero.</li><li>Session reset, pending-order gating and uncertain-order reconciliation.</li><li>Observation mode, explicit sandbox trading and shutdown cancellation.</li><li>Runtime tests and repository-root CI.</li></ul></section>
+<section><h2>Architecture and validation</h2><p>Exchange SSE → Python strategies → position and order checks → authenticated limit orders. Dashboard and MCP remain separate.</p><p>Local mocked tests validate the runtime. An authenticated sandbox smoke test is pending the team key. No measured P&amp;L or production readiness claim.</p></section>
+<section><h2>Next work</h2><p>Dashboard reliability, heartbeat and kill switch; ATR routing; risk controls; organizer-LLM announcement signals and an MCP conversational panel.</p><p>Codex assisted implementation and tests. Human review of trading and shutdown paths remains pending.</p></section></html>
