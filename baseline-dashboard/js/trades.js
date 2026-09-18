@@ -98,7 +98,7 @@
       self.list.push({
         orderId: id, status: status, at: e.at || "", remaining: e.remaining,
         source: "bot", symbol: e.symbol, side: e.side, quantity: e.quantity, price: e.price, code: e.code || undefined,
-        strategy: e.strategy || undefined, // which strategy submitted it (momentum, mean_reversion, dca, crash_guard), when the bot journals it
+        strategy: e.strategy || undefined, // which strategy submitted it (momentum, mean_reversion, exit, crash_guard, news), when the bot journals it
       });
       changed = true;
     });

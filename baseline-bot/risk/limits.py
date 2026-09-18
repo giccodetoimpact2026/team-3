@@ -32,8 +32,8 @@ class RiskLimits:
             primary_symbol: int(max_position_primary),
             secondary_symbol: int(max_position_secondary),
         }
-        # Cap for every other discovered instrument (the DCA overlay buys all
-        # five). Zero keeps the old behaviour: no buys outside primary/secondary.
+        # Cap for every other discovered instrument. Zero keeps the old
+        # behaviour: no buys outside primary/secondary.
         self._default = int(max_position_default)
 
         if extra_limits:

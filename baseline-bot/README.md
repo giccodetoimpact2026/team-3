@@ -77,7 +77,7 @@ baseline-bot/
 ├── main.py                     # wiring and the run loop
 ├── exchange/{client.py, feed.py, orderbook.py, results.py, ratelimit.py}
 ├── orders/manager.py           # single owner of order state + journal + burst throttle
-├── strategies/{base.py, momentum.py, mean_reversion.py, pairs.py, regime.py, dca.py}  # market_making.py.DISABLED (bonus)
+├── strategies/{base.py, momentum.py, mean_reversion.py, pairs.py, regime.py}  # market_making.py.DISABLED (bonus)
 ├── risk/limits.py
 ├── utils/{logger.py, event_worker.py, control.py, heartbeat.py}
 ├── tests/                      # starter strategy tests

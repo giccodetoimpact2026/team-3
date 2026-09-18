@@ -238,7 +238,7 @@ const DashboardController = {
     this.renderGuards(status);
   },
 
-  // Crash guard + DCA per instrument, from the same /bot/status payload.
+  // Crash guard per instrument, from the same /bot/status payload.
   // Hidden until the bot answers, so a dashboard without a bot has no empty table.
   renderGuards: function (status) {
     var rows = guardRows(status);
@@ -246,7 +246,7 @@ const DashboardController = {
     $("#guards-summary").text(guardSummary(status));
     $("#guards-body").html(rows.map(function (r) {
       var cls = r.guard.indexOf("DUMPED") === 0 ? "guard-dumped" : (r.guard.indexOf("breach") > 0 ? "guard-breach" : "");
-      return "<tr><td>" + escapeHtml(r.symbol) + "</td><td class=\"num\">" + escapeHtml(r.high) + "</td><td class=\"" + cls + "\">" + escapeHtml(r.guard) + "</td><td class=\"num\">" + escapeHtml(r.dca_buys) + "</td><td class=\"num\">" + escapeHtml(r.dca_next) + "</td></tr>";
+      return "<tr><td>" + escapeHtml(r.symbol) + "</td><td class=\"num\">" + escapeHtml(r.high) + "</td><td class=\"" + cls + "\">" + escapeHtml(r.guard) + "</td></tr>";
     }).join(""));
     $("#guards").show();
   },

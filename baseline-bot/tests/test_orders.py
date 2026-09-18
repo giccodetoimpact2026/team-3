@@ -523,7 +523,7 @@ def test_journal_tags_every_entry_with_the_submitting_strategy(manager, client, 
     manager.submit_intent("NOVA", "buy", 100, 4250, source="momentum")
     client.submit_limit_order.return_value = SubmitResult(
         Outcome.REJECTED, "k2", code="PRICE_OUT_OF_BAND")
-    manager.submit_intent("ELXR", "buy", 50, 9000, source="dca")
+    manager.submit_intent("ELXR", "buy", 50, 9000, source="exit")
     client.submit_limit_order.return_value = SubmitResult(
         Outcome.ACKNOWLEDGED, "k3", order_id="o3", status="OPEN", remaining_qty=10)
     manager.submit_intent("ELXR", "buy", 10, 9000)  # no source given
@@ -537,7 +537,7 @@ def test_journal_tags_every_entry_with_the_submitting_strategy(manager, client, 
     tagged = [(e["kind"], e["status"], e["symbol"], e["strategy"]) for e in events]
     assert tagged == [
         ("submit", "OPEN", "NOVA", "momentum"),
-        ("submit", "REJECTED", "ELXR", "dca"),
+        ("submit", "REJECTED", "ELXR", "exit"),
         ("submit", "OPEN", "ELXR", None),
         ("sync", "FILLED", "NOVA", "momentum"),
     ]

@@ -173,8 +173,7 @@ risk:
     AXON: 4000                   # follower, matches leader's cap
     DRFT: 400                    # thin book — kept small relative to others
 
-  # Cap for any discovered instrument not listed under max_position (the DCA
-  # overlay buys every instrument). 0 would block buys on unlisted names.
+  # Cap for any discovered instrument not listed under max_position.
   max_position_default: 1500
   # At most this many live orders per symbol; a persistent signal cannot stack.
   max_active_orders_per_symbol: 1
@@ -344,15 +343,3 @@ crash_guard:
   cooldown_seconds: 300
   reprice_after_seconds: 5
 
-dca:
-  # Dollar-cost averaging overlay: every `interval_seconds`, buy
-  # `cash_per_buy_cents` worth of EACH discovered instrument at the last price
-  # (plus `limit_offset_bps` to cross the spread). Runs beside the strategies;
-  # the OrderManager's position cap, cash check and one-order-per-symbol slot
-  # still apply. A refused buy (slot busy, cap reached) is retried after
-  # `retry_seconds`. Skipped while a symbol is in crash-guard cooldown.
-  enabled: true
-  interval_seconds: 60
-  cash_per_buy_cents: 500000     # S$5,000 per instrument per interval
-  retry_seconds: 5
-  limit_offset_bps: 5

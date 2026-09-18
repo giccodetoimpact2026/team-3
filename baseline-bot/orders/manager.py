@@ -104,7 +104,7 @@ class OrderManager:
         # SSE `trade` event carries no order id, and GET /orders never shows
         # a REJECTED submit or an UNKNOWN one under reconciliation.
         self._journal = deque(maxlen=self.JOURNAL_SIZE)
-        # Which strategy placed each order (momentum, mean_reversion, dca,
+        # Which strategy placed each order (momentum, mean_reversion,
         # exit, crash_guard, news), by idempotency key at submit time and by
         # exchange order id once acknowledged. Every journal entry carries it
         # so the dashboard can show who bought or sold, and why-questions can

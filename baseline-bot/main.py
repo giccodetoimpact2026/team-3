@@ -27,7 +27,6 @@ from risk.crash_guard import CrashGuard, CrashResponder
 from risk.exits import ExitPolicy
 from risk.limits import RiskLimits
 from strategies.base import Signal
-from strategies.dca import DcaOverlay
 from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
 from news.engine import NewsEngine
@@ -220,7 +219,7 @@ def build_regime_classifier(regime_cfg):
 
 def make_price_handler(strategies, orders, state, lifecycle, exits=None,
                        news_engine=None, regime_policy=None, classifier=None,
-                       crash=None, dca=None, tags=None):
+                       crash=None, tags=None):
     """Build the handler for `price` events.
 
     Module level rather than a closure inside main() so the trading path can be
@@ -256,9 +255,6 @@ def make_price_handler(strategies, orders, state, lifecycle, exits=None,
             crash.on_price(symbol, last_price)
             if not crash.allows_strategy(symbol):
                 return
-        # DCA overlay runs on every instrument, strategy or not, and never sells.
-        if dca is not None:
-            dca.on_price(symbol, last_price)
         if strat is None:
             return
         orders.poll()
@@ -589,22 +585,6 @@ def main():
     else:
         log("crash guard DISABLED by config")
 
-    # --- DCA overlay (all discovered instruments) ---------------------------
-    dca_cfg = config.get("dca") or {}
-    dca = None
-    if dca_cfg.get("enabled", False):
-        dca_symbols = [i.get("symbol") for i in instruments if i.get("symbol")]
-        dca = DcaOverlay(
-            dca_symbols, orders,
-            cash_per_buy_cents=dca_cfg.get("cash_per_buy_cents", 500_000),
-            interval_seconds=dca_cfg.get("interval_seconds", 60),
-            retry_seconds=dca_cfg.get("retry_seconds", 5),
-            limit_offset_bps=dca_cfg.get("limit_offset_bps", 5),
-            allow=(crash.allows_strategy if crash is not None else None),
-        )
-        log(f"dca armed on {dca_symbols}: {dca_cfg.get('cash_per_buy_cents', 500_000)} "
-            f"cents every {dca_cfg.get('interval_seconds', 60)}s")
-
     # --- shared state -------------------------------------------------------
     state = {
         "session_open": False,
@@ -665,14 +645,12 @@ def main():
             orders.reset_for_session(new_id)
             if crash is not None:
                 crash.guard.reset_for_session()
-            if dca is not None:
-                dca.reset_for_session()
 
     on_price = make_price_handler(strategies, orders, state, lifecycle, exits,
                                   news_engine=news_engine,
                                   regime_policy=regime_policy,
                                   classifier=classifier,
-                                  crash=crash, dca=dca,
+                                  crash=crash,
                                   tags={sym: cfg.get("type") for sym, cfg in config["strategy"].items()})
 
     def on_announcement(payload):
@@ -725,7 +703,6 @@ def main():
             "unresolved": lifecycle.get("unresolved", 0),
             "orders": orders.status(),
             "crash_guard": crash.status() if crash is not None else {"enabled": False},
-            "dca": dca.status() if dca is not None else {"enabled": False},
             "limits": risk.snapshot(symbols),
         }
         snapshot.update(heartbeat.snapshot())
