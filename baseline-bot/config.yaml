@@ -5,8 +5,8 @@
 # against sandbox, never against the live session.
 
 exchange:
-  base_url: "http://exchange.gic-hackathon.internal"   # sandbox/live URL from the platform team
-  api_key: "REPLACE_WITH_TEAM_API_KEY"
+  bbase_url: ""   # sandbox/live URL from the platform team
+  api_key: ""
 
 instruments:
   # Only NOVA and ELXR are traded by the baseline. AXON/CRVX/DRFT are left for
