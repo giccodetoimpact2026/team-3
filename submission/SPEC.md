@@ -1,8 +1,21 @@
 # Implementation Specification
 
+## Requirements
+
+The competition defines two core deliverables:
+
+1. **Create a trading bot** — an automated system that trades on a simulated exchange with 5 instruments (NOVA, ELXR, CRVX, DRFT, AXON) during scored 30-minute trading windows via REST + SSE APIs.
+2. **Build an analytics dashboard** — a monitoring and control interface for the trading bot, providing real-time visibility into positions, P&L, orders, and risk.
+
+Beyond these two deliverables, the competition evaluates:
+- Engineering quality (tests, CI, clean code, meaningful commits)
+- Requirement interpretation and prioritisation (from stakeholder interviews)
+- AI-assisted development practice (responsible use, documentation)
+- Presentation and communication
+
 ## Requirement Interpretation
 
-There is no clean specification. Requirements were derived from 12+ stakeholder interviews, a cross-functional meeting transcript, a post-meeting note, an email submission, and an informal chat thread. Stakeholders do not agree, and not everything they say is correct.
+There is no clean specification beyond the two deliverables above. The detailed requirements were derived from 12+ stakeholder interviews, a cross-functional meeting transcript, a post-meeting note, an email submission, and an informal chat thread. Stakeholders do not agree, and not everything they say is correct.
 
 ### How We Read the Stakeholders
 
