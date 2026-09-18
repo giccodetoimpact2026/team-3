@@ -25,6 +25,7 @@ from strategies.base import Signal
 from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
 from news.engine import NewsEngine
+from news.sentiment import SentimentAnalyzer
 from strategies.pairs import PairsFollowStrategy
 from strategies.regime_policy import RegimePolicy, StaticRegimeClassifier
 from utils.control import ControlServer
@@ -439,9 +440,17 @@ def main():
 
     # --- news engine -----------------------------------------------------------
     news_cfg = config.get("news", {})
-    news_engine = NewsEngine(news_cfg) if news_cfg.get("enabled") else None
-    if news_engine:
-        log("news engine enabled")
+    news_engine = None
+    if news_cfg.get("enabled"):
+        # Tier 1 (S1): the LLM reasons across the supply chain. It authenticates
+        # with the same secret as the exchange — the service has no separate key.
+        analyzer = SentimentAnalyzer(
+            news_cfg.get("llm", {}),
+            api_key=config["exchange"]["api_key"],
+            allowed_symbols=strategies.keys(),
+        )
+        news_engine = NewsEngine(news_cfg, analyzer=analyzer)
+        log(f"news engine enabled; llm sentiment {analyzer.stats()}")
 
     # --- regime policy (James Wee, page 3) -----------------------------------
     # The classifier is a separate component. Until it is wired, the policy is
