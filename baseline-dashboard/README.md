@@ -9,23 +9,39 @@ Vanilla HTML/CSS/JS + jQuery (pre-framework — you may refactor to React).
 
 ## What it does
 
-- Polls the exchange `GET /portfolio` every 30s and renders three P&L cards, a
-  positions table, a connectivity dot, and a footer clock. Money is integer cents
-  on the wire, shown as dollars.
+- Subscribes to the exchange SSE feed (`/events`) and re-reads `GET /portfolio`
+  and `GET /orders` when the market moves (coalesced, never on a timer).
+- Renders three P&L cards, a positions table for every instrument from
+  `GET /instruments`, session order counters (buy / sell / partially filled /
+  rejected), per-instrument P&L from the MCP read server (falls back to
+  `GET /portfolio` with a source label when MCP is down), an order lifecycle
+  table with exact status codes, a session badge, announcements, a connectivity
+  dot, and an SGT clock.
+- Exports the session's order lifecycle as CSV in Gerald's fixed schema
+  (`TradeID,Timestamp_SGT,...`, `YYYY-MM-DD HH:MM:SS.mmm SGT`, period decimals).
+- On a feed drop every figure is replaced with "Reconnecting…" until fresh data
+  arrives; a session id change resets all session-scoped state.
+- Money is integer cents on the wire, shown as dollars.
 
 ## What it deliberately lacks
 
-Live SSE data, heartbeat health, a kill switch, the conversational MCP panel, a
-predictive view, charts, order book, alerts, export, dark mode, and instrument
-coverage beyond two — all student work. There are also a few inherited bugs; the
-handover notes point at them.
+Heartbeat health, a kill switch, the conversational MCP panel, a predictive
+view, charts, order book, alerts, and dark mode — still open.
 
 ## Run
 
 Open `index.html` in a browser, or serve the folder:
 
 ```bash
-python -m http.server 5500     # http://localhost:5500
+npm start                      # node server.js -> http://localhost:5500 (static + /exchange proxy, key from EXCHANGE_API_KEY or ../baseline-bot/.env)
+```
+
+The per-instrument P&L section reads the MCP server at `CONFIG.MCP_BASE_URL`
+(default `http://localhost:8091`). Start it from `../baseline-mcp-server`:
+
+```bash
+MCP_PORT=8091 MCP_EXCHANGE_BASE_URL=https://api.codetoimpact.sg \
+MCP_EXCHANGE_API_KEY=<api_key> python server.py
 ```
 
 Edit [`js/config.js`](js/config.js): `API_BASE_URL` (sandbox/live), `API_KEY`, and
@@ -47,7 +63,8 @@ npm test        # node --test (unit tests)
 baseline-dashboard/
 ├── index.html
 ├── css/dashboard.css              # light theme; dark-mode vars stubbed
-├── js/{config.js, format.js, api.js, dashboard.js}
+├── js/{config.js, format.js, view.js, trades.js, mcp.js, api.js, dashboard.js}
+│                                  # format/view/trades are pure + unit-tested
 ├── assets/gic-logo-placeholder.svg
 ├── mcp-adapter.example.js         # M4 starting point (one MCP read-tool call)
 ├── tests/                         # starter unit tests

@@ -4,8 +4,9 @@
   "private": true,
   "description": "Baseline trading dashboard for the GIC hackathon (vanilla HTML/CSS/JS + jQuery).",
   "scripts": {
-    "test": "node --test tests/",
-    "check": "node --check js/config.js && node --check js/format.js && node --check js/api.js && node --check js/dashboard.js && node --check mcp-adapter.example.js"
+    "start": "node server.js",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "check": "node --check js/config.js && node --check js/format.js && node --check js/view.js && node --check js/trades.js && node --check js/mcp.js && node --check js/api.js && node --check js/dashboard.js && node --check server.js && node --check mcp-adapter.example.js"
   },
   "engines": {
     "node": ">=18"

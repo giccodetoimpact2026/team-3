@@ -1,0 +1,22 @@
+# Repo-root CI for the dashboard (GitHub only runs workflows under the repo-root .github/).
+name: Dashboard checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: baseline-dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Syntax check
+        run: npm run check
+      - name: Test
+        run: npm test
