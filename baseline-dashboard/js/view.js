@@ -12,6 +12,8 @@
     root.escapeHtml = api.escapeHtml;
     root.botStatusView = api.botStatusView;
     root.haltResultText = api.haltResultText;
+    root.guardRows = api.guardRows;
+    root.guardSummary = api.guardSummary;
   }
 })(typeof self !== "undefined" ? self : this, function (fmt) {
   // One row per instrument in the given order. An instrument absent from the
@@ -122,6 +124,46 @@
     return parts.join(" · ");
   }
 
+  // Crash guard + DCA state per instrument, from GET /bot/status
+  // (`crash_guard` and `dca` blocks). One row per symbol the bot reports.
+  // Missing blocks (older bot, feature disabled) render as an empty list so
+  // the section simply shows nothing rather than "undefined".
+  function guardRows(status) {
+    var cg = (status && status.crash_guard) || {};
+    var dca = (status && status.dca) || {};
+    var dcaSyms = dca.symbols || {};
+    var symbols = {};
+    Object.keys(cg).forEach(function (k) { if (cg[k] && typeof cg[k] === "object") symbols[k] = true; });
+    Object.keys(dcaSyms).forEach(function (k) { symbols[k] = true; });
+    return Object.keys(symbols).sort().map(function (sym) {
+      var g = cg[sym] || {};
+      var d = dcaSyms[sym] || {};
+      var guard;
+      if (!cg[sym]) guard = "—";
+      else if (g.cooldown) guard = "DUMPED · cooldown " + Math.round(g.cooldown_remaining_s || 0) + "s";
+      else if (g.breaches) guard = "ARMED · " + g.breaches + " breach" + (g.breaches === 1 ? "" : "es");
+      else guard = "ARMED";
+      return {
+        symbol: sym,
+        high: typeof g.high === "number" ? fmt.formatCurrency(g.high) : "—",
+        guard: guard,
+        dca_buys: typeof d.buys === "number" ? String(d.buys) : "—",
+        dca_next: typeof d.next_in_s === "number" ? Math.round(d.next_in_s) + "s" : "—",
+      };
+    });
+  }
+
+  function guardSummary(status) {
+    var cg = (status && status.crash_guard) || {};
+    var dca = (status && status.dca) || {};
+    var parts = [];
+    if (typeof cg.drop_pct === "number") parts.push("crash guard: sell all on " + Math.round(cg.drop_pct * 100) + "% drop over " + cg.confirm_ticks + " ticks, floor " + Math.round(cg.floor_pct * 100) + "%");
+    else parts.push("crash guard: off");
+    if (typeof dca.cash_per_buy_cents === "number") parts.push("DCA: " + fmt.formatCurrency(dca.cash_per_buy_cents) + " per instrument every " + Math.round(dca.interval_seconds) + "s");
+    else parts.push("DCA: off");
+    return parts.join(" · ");
+  }
+
   // One-line outcome of POST /bot/halt for the operator.
   function haltResultText(resp) {
     var n = resp && resp.unresolved !== undefined ? Number(resp.unresolved) : 0;
@@ -129,5 +171,5 @@
     return "Halted. All open orders cancelled.";
   }
 
-  return { positionRows, FeedCursor, escapeHtml, botStatusView, haltResultText, HEARTBEAT_DEAD_AFTER_S };
+  return { positionRows, FeedCursor, escapeHtml, botStatusView, haltResultText, guardRows, guardSummary, HEARTBEAT_DEAD_AFTER_S };
 });

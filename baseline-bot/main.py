@@ -21,7 +21,9 @@ from exchange.client import ExchangeClient
 from exchange.feed import SSEFeed
 from exchange.ratelimit import RollingWindow
 from orders.manager import OrderManager
+from risk.crash_guard import CrashGuard, CrashResponder
 from risk.limits import RiskLimits
+from strategies.dca import DcaOverlay
 from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
 from utils.control import ControlServer
@@ -199,6 +201,7 @@ def main():
         config["risk"]["max_position_primary"],
         config["risk"]["max_position_secondary"],
         primary, secondary,
+        max_position_default=config["risk"].get("max_position_default", 0),
     )
 
     limits = config.get("rate_limits", {})
@@ -218,6 +221,42 @@ def main():
     portfolio = client.get_portfolio()
     for sym in strategies:
         log(f"{sym} starting position: {client.position_detail(sym, portfolio)['quantity']}")
+
+    # --- crash guard (all discovered instruments) ---------------------------
+    cg = config.get("crash_guard") or {}
+    crash = None
+    if cg.get("enabled", True):
+        symbols = [i.get("symbol") for i in instruments if i.get("symbol")]
+        guard = CrashGuard(
+            symbols,
+            drop_pct=cg.get("drop_pct", 0.15),
+            confirm_ticks=cg.get("confirm_ticks", 3),
+            floor_pct=cg.get("floor_pct", 0.03),
+            cooldown_seconds=cg.get("cooldown_seconds", 300),
+        )
+        crash = CrashResponder(guard, client, orders,
+                               reprice_after=cg.get("reprice_after_seconds", 5))
+        log(f"crash guard armed on {symbols}: drop {guard.drop_pct:.0%} over "
+            f"{guard.confirm_ticks} ticks, floor {guard.floor_pct:.0%}, "
+            f"cooldown {guard.cooldown_seconds:.0f}s")
+    else:
+        log("crash guard DISABLED by config")
+
+    # --- DCA overlay (all discovered instruments) ---------------------------
+    dca_cfg = config.get("dca") or {}
+    dca = None
+    if dca_cfg.get("enabled", False):
+        dca_symbols = [i.get("symbol") for i in instruments if i.get("symbol")]
+        dca = DcaOverlay(
+            dca_symbols, orders,
+            cash_per_buy_cents=dca_cfg.get("cash_per_buy_cents", 500_000),
+            interval_seconds=dca_cfg.get("interval_seconds", 60),
+            retry_seconds=dca_cfg.get("retry_seconds", 5),
+            limit_offset_bps=dca_cfg.get("limit_offset_bps", 5),
+            allow=(crash.allows_strategy if crash is not None else None),
+        )
+        log(f"dca armed on {dca_symbols}: {dca_cfg.get('cash_per_buy_cents', 500_000)} "
+            f"cents every {dca_cfg.get('interval_seconds', 60)}s")
 
     # --- shared state -------------------------------------------------------
     state = {
@@ -262,17 +301,32 @@ def main():
                 strat.prices.clear()
             state["session_id"] = new_id
             orders.reset_for_session(new_id)
+            if crash is not None:
+                crash.guard.reset_for_session()
+            if dca is not None:
+                dca.reset_for_session()
 
     def on_price(payload):
         if lifecycle["value"] != RUNNING:
             return
 
         symbol = payload.get("symbol")
+        last_price = payload.get("last_price")
         strat = strategies.get(symbol)
-        if strat is None:
-            return
-        strat.on_price(payload["last_price"])
+        if strat is not None:
+            strat.on_price(last_price)
         if not state["session_open"]:
+            return
+        # Crash guard runs first and on every instrument, strategy or not:
+        # a 15% collapse dumps the position before any strategy gets a say.
+        if crash is not None:
+            crash.on_price(symbol, last_price)
+            if not crash.allows_strategy(symbol):
+                return
+        # DCA runs on every instrument, strategy or not, and never sells.
+        if dca is not None:
+            dca.on_price(symbol, last_price)
+        if strat is None:
             return
         # Runs on the trading worker thread, never on the SSE reader: REST
         # calls here cannot block feed ingestion.
@@ -327,6 +381,8 @@ def main():
             "session_open": state["session_open"],
             "unresolved": lifecycle.get("unresolved", 0),
             "orders": orders.status(),
+            "crash_guard": crash.status() if crash is not None else {"enabled": False},
+            "dca": dca.status() if dca is not None else {"enabled": False},
         }
         snapshot.update(heartbeat.snapshot())
         return snapshot

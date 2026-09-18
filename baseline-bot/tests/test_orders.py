@@ -435,3 +435,75 @@ def test_status_snapshot(manager, client):
     assert s["blocked"] is False
     assert s["paused"] is False
     assert s["journal_seq"] == 1
+
+
+# --- crash guard: flatten() ------------------------------------------------
+
+def _hold(client, symbol, qty, reserved=0):
+    client.get_portfolio.return_value = {
+        "session_id": "w1", "cash": 1_000_000_000, "reserved_cash": 0,
+        "positions": [{"symbol": symbol, "quantity": qty, "reserved_qty": reserved}]}
+
+
+def test_flatten_cancels_that_symbols_orders_then_sells_everything_held(manager, client):
+    _hold(client, "NOVA", 1000)
+    manager.submit_intent("NOVA", "sell", 100, 4250)         # o1 rests
+    client.cancel_order.return_value = CancelResult(CancelOutcome.CANCELLED, "o1")
+    client.submit_limit_order.return_value = SubmitResult(
+        Outcome.ACKNOWLEDGED, "k", order_id="d1", status="FILLED",
+        remaining_qty=0, filled_qty=1000)
+
+    result = manager.flatten("NOVA", lambda qty: 4000)
+
+    client.cancel_order.assert_called_once_with("o1")
+    sym, side, qty, price, _key = client.submit_limit_order.call_args.args
+    assert (sym, side, qty, price) == ("NOVA", "sell", 1000, 4000)
+    assert result.filled_qty == 1000
+    assert manager.projected_position("NOVA") == 0
+
+
+def test_flatten_passes_the_sellable_quantity_to_the_pricer(manager, client):
+    _hold(client, "NOVA", 750)
+    seen = []
+    manager.flatten("NOVA", lambda qty: seen.append(qty) or 4000)
+    assert seen == [750]
+
+
+def test_flatten_ignores_the_one_active_order_cap(manager, client):
+    _hold(client, "NOVA", 1000)
+    manager.submit_intent("NOVA", "sell", 100, 4250)          # o1 rests
+    client.cancel_order.return_value = CancelResult(CancelOutcome.CANCELLED, "o1")
+    manager.flatten("NOVA", lambda qty: 4000)
+    assert client.submit_limit_order.call_count == 2
+
+
+def test_flatten_does_not_touch_other_symbols_orders(manager, client):
+    _hold(client, "NOVA", 1000)
+    client.submit_limit_order.return_value = SubmitResult(
+        Outcome.ACKNOWLEDGED, "k", order_id="e1", status="OPEN", remaining_qty=50)
+    manager.submit_intent("ELXR", "buy", 50, 4250)
+    client.submit_limit_order.return_value = SubmitResult(
+        Outcome.ACKNOWLEDGED, "k", order_id="d1", status="FILLED", filled_qty=1000)
+    manager.flatten("NOVA", lambda qty: 4000)
+    assert not client.cancel_order.called
+
+
+def test_flatten_sends_nothing_when_nothing_is_held(manager, client):
+    _hold(client, "NOVA", 0)
+    assert manager.flatten("NOVA", lambda qty: 4000) is None
+    assert not client.submit_limit_order.called
+
+
+def test_flatten_respects_the_halt_block(manager, client):
+    _hold(client, "NOVA", 1000)
+    manager.block_new_intents()
+    assert manager.flatten("NOVA", lambda qty: 4000) is None
+    assert not client.submit_limit_order.called
+
+
+def test_flatten_leaves_an_unresolved_cancel_alone(manager, client):
+    _hold(client, "NOVA", 1000)
+    manager.submit_intent("NOVA", "sell", 100, 4250)
+    client.cancel_order.return_value = CancelResult(CancelOutcome.UNKNOWN, "o1")
+    assert manager.flatten("NOVA", lambda qty: 4000) is None
+    assert client.submit_limit_order.call_count == 1   # only the original sell

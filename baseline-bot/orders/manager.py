@@ -537,6 +537,61 @@ class OrderManager:
             self._unknown[key] = UnknownIntent(key, symbol, side, quantity, price,
                                                self._clock())
 
+        return self._send(symbol, side, quantity, price, key)
+
+    def flatten(self, symbol: str, pricer) -> SubmitResult | None:
+        """Crash-guard exit: cancel our resting orders on `symbol`, then sell
+        every share we hold in one order priced by `pricer(quantity)`.
+
+        Bypasses the one-active-order cap (that cap exists to stop signal
+        stacking, and this is a deliberate single exit) but not the halt block,
+        the anomaly pause, or long-only sizing. Returns None if nothing was sent.
+        """
+        with self._lock:
+            if self._blocked or self._clock() < self._paused_until:
+                return None
+            if self._symbol_unresolved(symbol):
+                log(f"{symbol}: flatten refused, unreconciled order outstanding")
+                return None
+            to_cancel = self._active_ids(symbol)
+
+        for order_id in to_cancel:
+            result = self._client.cancel_order(order_id)
+            self._observe_shared(result)
+            if not result.settled:
+                log(f"{symbol}: flatten aborted, cancel of {order_id} unresolved "
+                    f"({result.code})")
+                return None
+            with self._lock:
+                tracked = self._active.pop(order_id, None)
+            if tracked:
+                self._journal_put("cancel", "CANCELLED", tracked.symbol, tracked.side,
+                                  tracked.quantity, tracked.price, order_id=order_id,
+                                  key=tracked.idempotency_key, remaining=0)
+
+        self.refresh_positions(force=True)
+
+        with self._lock:
+            if self._blocked or self._symbol_unresolved(symbol):
+                return None
+            quantity = self.available_to_sell(symbol)
+            if quantity <= 0:
+                log(f"{symbol}: flatten has nothing to sell")
+                return None
+            price = int(pricer(quantity))
+            if price <= 0:
+                log(f"{symbol}: flatten refused, non-positive price {price}")
+                return None
+            if self._order_limiter and not self._order_limiter.acquire():
+                log(f"{symbol}: flatten deferred, order rate window spent")
+                return None
+            key = self._next_key(symbol, "sell")
+            self._unknown[key] = UnknownIntent(key, symbol, "sell", quantity, price,
+                                               self._clock())
+        log(f"{symbol}: flatten sell {quantity}@{price}")
+        return self._send(symbol, "sell", quantity, price, key)
+
+    def _send(self, symbol, side, quantity, price, key) -> SubmitResult:
         result = self._client.submit_limit_order(symbol, side, quantity, price, key)
         self._observe_orders(result)
 

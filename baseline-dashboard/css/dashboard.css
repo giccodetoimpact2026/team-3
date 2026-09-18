@@ -204,3 +204,8 @@ td.empty { color: #9aa3b2; text-align: center; font-style: italic; }
   .ops-strip { grid-template-columns: repeat(2, 1fr); }
   table.dense { display: block; overflow-x: auto; }
 }
+
+/* Bot guards (crash guard + DCA) */
+.guards { margin-bottom: 24px; }
+.guards .guard-dumped { color: #dc2626; font-weight: 600; }
+.guards .guard-breach { color: #d97706; font-weight: 600; }

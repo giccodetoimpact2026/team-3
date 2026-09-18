@@ -2,7 +2,7 @@
 // the SSE cursor and session boundary behave. No DOM.
 const test = require("node:test");
 const assert = require("node:assert");
-const { positionRows, FeedCursor, botStatusView, haltResultText } = require("../js/view.js");
+const { positionRows, FeedCursor, botStatusView, haltResultText, guardRows, guardSummary } = require("../js/view.js");
 
 test("positionRows: instrument absent from the portfolio shows 0 quantity and dashes", () => {
   const rows = positionRows(["NOVA", "AXON"], { positions: [{ symbol: "NOVA", quantity: 5, avg_cost: 100, market_value: 500, unrealized_pnl: -10 }] });
@@ -117,4 +117,27 @@ test("haltResultText: reports unresolved cancellations, singular and plural", ()
   assert.strictEqual(haltResultText({ state: "STOPPED" }), "Halted. All open orders cancelled.");
   assert.strictEqual(haltResultText({ unresolved: 1 }), "Halted. 1 order could not be confirmed cancelled; check the exchange.");
   assert.strictEqual(haltResultText({ unresolved: 3 }), "Halted. 3 orders could not be confirmed cancelled; check the exchange.");
+});
+
+test("guardRows: one row per symbol with crash-guard and DCA state", () => {
+  const status = {
+    crash_guard: { drop_pct: 0.15, confirm_ticks: 3, floor_pct: 0.03, cooldown_seconds: 300,
+      NOVA: { high: 15075, breaches: 0, cooldown: false, cooldown_remaining_s: 0 },
+      DRFT: { high: 6000, breaches: 2, cooldown: false, cooldown_remaining_s: 0 },
+      AXON: { high: 9000, breaches: 0, cooldown: true, cooldown_remaining_s: 120.4 } },
+    dca: { interval_seconds: 60, cash_per_buy_cents: 500000,
+      symbols: { NOVA: { buys: 2, next_in_s: 41.6 }, DRFT: { buys: 0, next_in_s: 0 }, AXON: { buys: 1, next_in_s: 3 } } },
+  };
+  assert.deepStrictEqual(guardRows(status), [
+    { symbol: "AXON", high: "$90.00", guard: "DUMPED · cooldown 120s", dca_buys: "1", dca_next: "3s" },
+    { symbol: "DRFT", high: "$60.00", guard: "ARMED · 2 breaches", dca_buys: "0", dca_next: "0s" },
+    { symbol: "NOVA", high: "$150.75", guard: "ARMED", dca_buys: "2", dca_next: "42s" },
+  ]);
+  assert.strictEqual(guardSummary(status), "crash guard: sell all on 15% drop over 3 ticks, floor 3% · DCA: $5,000.00 per instrument every 60s");
+});
+
+test("guardRows: older bot without the blocks renders nothing, not undefined", () => {
+  assert.deepStrictEqual(guardRows({ state: "RUNNING" }), []);
+  assert.deepStrictEqual(guardRows(null), []);
+  assert.strictEqual(guardSummary(null), "crash guard: off · DCA: off");
 });

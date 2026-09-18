@@ -73,3 +73,15 @@ def test_invalid_config_is_rejected(mutate, match):
     mutate(cfg)
     with pytest.raises(ValueError, match=match):
         main.validate_config(cfg)
+
+
+def test_crash_guard_config_covers_all_instruments(monkeypatch):
+    monkeypatch.setenv("EXCHANGE_API_KEY", "test-key")
+    monkeypatch.setenv("EXCHANGE_BASE_URL", "http://test")
+    from main import load_config
+    cg = load_config()["crash_guard"]
+    assert cg["enabled"] is True
+    assert cg["drop_pct"] == 0.15
+    assert cg["confirm_ticks"] >= 2
+    assert 0 < cg["floor_pct"] < cg["drop_pct"]
+    assert cg["cooldown_seconds"] > 0

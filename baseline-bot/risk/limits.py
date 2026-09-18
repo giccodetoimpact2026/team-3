@@ -13,14 +13,18 @@ includes pending orders — OrderManager.projected_position() computes it.
 
 class RiskLimits:
     def __init__(self, max_position_primary: int, max_position_secondary: int,
-                 primary_symbol: str, secondary_symbol: str):
+                 primary_symbol: str, secondary_symbol: str,
+                 max_position_default: int = 0):
         self._max = {
             primary_symbol: int(max_position_primary),
             secondary_symbol: int(max_position_secondary),
         }
+        # Cap for every other discovered instrument (the DCA overlay buys all
+        # five). Zero keeps the old behaviour: no buys outside primary/secondary.
+        self._default = int(max_position_default)
 
     def max_position(self, symbol: str) -> int:
-        return self._max.get(symbol, 0)
+        return self._max.get(symbol, self._default)
 
     def allows_buy(self, symbol: str, projected_position: int, quantity: int) -> bool:
         """True if buying `quantity` keeps the projected long within the cap.

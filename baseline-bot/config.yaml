@@ -32,8 +32,14 @@ strategy:
     limit_offset_bps: 5
 
 risk:
-  max_position_primary: 500
-  max_position_secondary: 200
+  # Every team starts each window with 1,000 shares per instrument, so a cap
+  # below that refuses every buy. Caps are on the projected long (held +
+  # pending buys), not on what the bot adds.
+  max_position_primary: 1500
+  max_position_secondary: 1500
+  # Cap for the other discovered instruments (AXON/CRVX/DRFT), used by the
+  # DCA overlay. 0 would block all buys on them.
+  max_position_default: 1500
   # At most this many live orders per symbol; a persistent signal cannot stack.
   max_active_orders_per_symbol: 1
   # Order-rate anomaly throttle (BUG-003): more submits than this inside one
@@ -64,3 +70,33 @@ control:
   # Binds to localhost only; POST /halt runs the same path as Ctrl-C.
   host: "127.0.0.1"
   port: 8092
+
+crash_guard:
+  # Crash exit, applied to EVERY discovered instrument (all five start with a
+  # 1,000-share position, not just the two the strategies trade).
+  # When the last price sits `drop_pct` below the window high for
+  # `confirm_ticks` consecutive ticks, cancel our resting orders on that symbol
+  # and sell the whole position in ONE limit order priced at the bid level that
+  # absorbs it (price-time priority fills it against every better bid first).
+  # The sell price never goes below `floor_pct` under the trigger price; any
+  # remainder rests there and is repriced once after `reprice_after_seconds`.
+  # Strategies stay quiet on that symbol for `cooldown_seconds`.
+  enabled: true
+  drop_pct: 0.15
+  confirm_ticks: 3
+  floor_pct: 0.03
+  cooldown_seconds: 300
+  reprice_after_seconds: 5
+
+dca:
+  # Dollar-cost averaging overlay: every `interval_seconds`, buy
+  # `cash_per_buy_cents` worth of EACH discovered instrument at the last price
+  # (plus `limit_offset_bps` to cross the spread). Runs beside the strategies;
+  # the OrderManager's position cap, cash check and one-order-per-symbol slot
+  # still apply. A refused buy (slot busy, cap reached) is retried after
+  # `retry_seconds`. Skipped while a symbol is in crash-guard cooldown.
+  enabled: true
+  interval_seconds: 60
+  cash_per_buy_cents: 500000     # S$5,000 per instrument per interval
+  retry_seconds: 5
+  limit_offset_bps: 5
