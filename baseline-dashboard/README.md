@@ -22,11 +22,17 @@ Vanilla HTML/CSS/JS + jQuery (pre-framework — you may refactor to React).
 - On a feed drop every figure is replaced with "Reconnecting…" until fresh data
   arrives; a session id change resets all session-scoped state.
 - Money is integer cents on the wire, shown as dollars.
+- Kill switch: a `HALT BOT` button in the top bar (one click, no confirmation)
+  sends `POST /bot/halt`; the bot blocks new orders, cancels every open order
+  and stops. A pill next to it shows the bot state from `GET /bot/status`
+  (RUNNING / HALTING / HALTED / OFFLINE), polled every 3 s. `server.js`
+  proxies `/bot/*` to the bot's local control port (`BOT_CONTROL_URL`, default
+  `http://127.0.0.1:8092`, matching `control.port` in the bot's `config.yaml`).
 
 ## What it deliberately lacks
 
-Heartbeat health, a kill switch, the conversational MCP panel, a predictive
-view, charts, order book, alerts, and dark mode — still open.
+Heartbeat health, the conversational MCP panel, a predictive view, charts,
+order book, alerts, and dark mode — still open.
 
 ## Run
 

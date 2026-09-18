@@ -30,6 +30,11 @@ export EXCHANGE_BASE_URL="https://api.codetoimpact.sg"
 python main.py
 ```
 
+The bot also serves a local control endpoint (`config.yaml` → `control`, default
+`127.0.0.1:8092`; override with `BOT_CONTROL_PORT`). `GET /status` reports the
+lifecycle state; `POST /halt` runs the same path as Ctrl-C (block intents, cancel
+open orders, stop). The dashboard's HALT BOT button uses it through its own proxy.
+
 Treat **sandbox as dev** and **live as prod** — switch via `config.yaml`; don't
 develop against the live session.
 

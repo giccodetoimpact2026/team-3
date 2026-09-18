@@ -14,6 +14,9 @@ const path = require("path");
 
 const PORT = Number(process.env.PORT || 5500);
 const EXCHANGE = new URL(process.env.EXCHANGE_BASE_URL || "https://api.codetoimpact.sg");
+// The bot's local control endpoint (kill switch). /bot/* is forwarded here so
+// the browser never talks cross-origin and the bot can stay bound to localhost.
+const BOT = new URL(process.env.BOT_CONTROL_URL || "http://127.0.0.1:8092");
 const ROOT = __dirname;
 
 function loadKey() {
@@ -68,6 +71,26 @@ function proxy(req, res) {
   req.pipe(up);
 }
 
+// Forward /bot/<path> to the bot's control server. Only GET /status and
+// POST /halt exist upstream; anything else is answered 404 by the bot itself.
+// A bot that is not running answers 502 so the page can show OFFLINE.
+function proxyBot(req, res) {
+  const upstreamPath = req.url.replace(/^\/bot/, "") || "/";
+  const up = http.request(
+    { host: BOT.hostname, port: BOT.port || 80, path: upstreamPath, method: req.method, headers: { accept: "application/json" } },
+    function (upRes) {
+      res.writeHead(upRes.statusCode, { "content-type": upRes.headers["content-type"] || "application/json", "cache-control": "no-store" });
+      upRes.pipe(res);
+    }
+  );
+  up.setTimeout(10000, function () { up.destroy(new Error("bot control timeout")); });
+  up.on("error", function (err) {
+    res.writeHead(502, { "content-type": "application/json" });
+    res.end(JSON.stringify({ status: "error", error: { code: "BOT_UNREACHABLE", message: err.message } }));
+  });
+  req.pipe(up);
+}
+
 function serveStatic(req, res) {
   let p = decodeURIComponent(new URL(req.url, "http://x").pathname);
   if (p === "/") p = "/index.html";
@@ -83,9 +106,11 @@ function serveStatic(req, res) {
 http
   .createServer(function (req, res) {
     if (req.url.startsWith("/exchange/") || req.url === "/exchange") return proxy(req, res);
+    if (req.url.startsWith("/bot/")) return proxyBot(req, res);
     serveStatic(req, res);
   })
   .listen(PORT, function () {
     console.log("dashboard  http://localhost:" + PORT);
     console.log("proxying   /exchange/* -> " + EXCHANGE.origin + (API_KEY ? " (key loaded)" : " (NO KEY)"));
+    console.log("proxying   /bot/*      -> " + BOT.origin + " (bot control: status + kill switch)");
   });

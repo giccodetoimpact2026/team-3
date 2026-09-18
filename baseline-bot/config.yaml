@@ -35,3 +35,9 @@ risk:
   max_position_primary: 500
   max_position_secondary: 200
   # No portfolio-level cap and no stop-loss yet — intentional gaps (bonus work).
+
+control:
+  # Local kill-switch endpoint consumed by the dashboard (via its /bot/* proxy).
+  # Binds to localhost only; POST /halt runs the same path as Ctrl-C.
+  host: "127.0.0.1"
+  port: 8092

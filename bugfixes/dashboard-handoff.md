@@ -43,7 +43,21 @@ Root: `.github/workflows/dashboard-ci.yml`.
 - `trade` SSE events are market-wide, so a re-read may find nothing changed.
 - `CONFIG.MCP_BASE_URL` defaults to port 8091; the MCP server is started with `MCP_PORT=8091`.
 
+## Kill switch (P0-14, backlog High) — branch `kill-switch`
+
+- Bot: `utils/control.py` serves `GET /status` and `POST /halt` on localhost
+  (`config.yaml` → `control.port`, default 8092; env `BOT_CONTROL_PORT`). `/halt` calls the
+  existing `halt()`; a second call is a no-op that reports `STOPPED`. The main loop now waits
+  on the shutdown event, so halt (and Ctrl-C) actually end the process.
+- Dashboard: `server.js` proxies `/bot/*` to the control port. Top bar shows a bot state pill
+  (RUNNING / HALTING… / HALTED / OFFLINE, polled every 3 s) and a red HALT BOT button, enabled
+  only while RUNNING. One click, no confirmation. The result banner reports how many orders
+  could not be confirmed cancelled.
+- Tests: `tests/test_control.py` (bot, real HTTP on an ephemeral port) and `botStatusView` /
+  `haltResultText` cases in `tests/view.test.js`. Verified in a browser against the sandbox
+  exchange with a stub control server: RUNNING → click → HALTED banner → OFFLINE after the
+  process exits.
+
 ## Open
 
-Heartbeat health dot, kill switch (bot `halt()` is ready to receive a command), MCP
-conversational panel, price chart, dark mode.
+Heartbeat health dot (BUG-010), MCP conversational panel, price chart (BUG-018), dark mode.

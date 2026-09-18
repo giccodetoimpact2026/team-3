@@ -159,6 +159,16 @@ tbody tr:last-child td {
 .badge.open { background: #dcfce7; color: #166534; }
 .badge.halted { background: #fef3c7; color: #92400e; }
 .badge.closed { background: #fee2e2; color: #991b1b; }
+.badge.bot { margin-right: 4px; }
+.badge.bot.running { background: #dcfce7; color: #166534; }
+.badge.bot.quiescing { background: #fef3c7; color: #92400e; }
+.badge.bot.stopped { background: #fee2e2; color: #991b1b; }
+.badge.bot.offline { background: #e5e7eb; color: #6b7280; }
+.btn.danger { background: #b91c1c; font-weight: 700; letter-spacing: 0.06em; margin-right: 12px; }
+.btn.danger:hover:not(:disabled) { background: #991b1b; }
+.btn.danger:disabled { background: #e5e7eb; color: #9ca3af; }
+.halt-result { background: #fee2e2; border: 1px solid #fca5a5; color: #7f1d1d; padding: 8px 12px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; font-weight: 600; }
+.halt-result.error { background: #fff7ed; border-color: #fdba74; color: #7c2d12; }
 .announcement { background: #fffbeb; border: 1px solid #fcd34d; color: #78350f; padding: 8px 12px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
 
 /* --- P4/P5: operations strip, P&L by instrument, order lifecycle ---------- */
