@@ -54,6 +54,28 @@ strategy:
     momentum_threshold: 0.012
     trade_quantity: 400
     limit_offset_bps: 5
+    # GIVE-BACK EXIT. Fixes a measured failure to release a long: the entry
+    # measure `(last - first)/first` uses a reference that slides forward with
+    # the window, so when a rise flattens, `first` catches up into the new
+    # level and the window return decays toward 0% rather than toward the
+    # -1.2% that would sell. Measured on a +3% ramp: 10 buys to the 4000 cap,
+    # 0 sells, then held indefinitely. This measure prices the exit off the
+    # window HIGH instead, which only ratchets up, so a roll-over registers
+    # at once instead of after the whole move has been handed back.
+    #
+    # 0.012 not 0.008: on noisy synthetic paths the tighter value exits a
+    # roll-over marginally better but was worse in the three other shapes
+    # tested (flat, choppy, trending) through churn and clipping winners.
+    # CRVX deliberately has no give-back — at 15 samples / 0.75% its window
+    # return already turns negative in time, so it would be pure churn. This
+    # is a fix for NOVA's specific 25-sample / 1.2% pairing, not for momentum.
+    exit_giveback_pct: 0.012
+    # `max_tranches` is available and tested but deliberately UNSET, which
+    # leaves the scale-in bounded only by the position cap: at 400 a clip that
+    # is 10 adds to reach 4000, so any sustained rise fills NOVA completely.
+    # Setting it (e.g. 3) is purely a concentration dial — on synthetic paths
+    # P&L scaled about linearly with the bound, with no risk-adjusted gain, so
+    # it is a risk-appetite decision to take deliberately rather than a fix.
   ELXR:
     type: mean_reversion
     lookback_samples: 15
