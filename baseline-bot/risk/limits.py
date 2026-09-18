@@ -13,11 +13,15 @@ includes pending orders — OrderManager.projected_position() computes it.
 
 class RiskLimits:
     def __init__(self, max_position_primary: int, max_position_secondary: int,
-                 primary_symbol: str, secondary_symbol: str):
+                 primary_symbol: str, secondary_symbol: str,
+                 extra_limits: dict | None = None):
         self._max = {
             primary_symbol: int(max_position_primary),
             secondary_symbol: int(max_position_secondary),
         }
+        if extra_limits:
+            for sym, cap in extra_limits.items():
+                self._max[sym] = int(cap)
 
     def max_position(self, symbol: str) -> int:
         return self._max.get(symbol, 0)

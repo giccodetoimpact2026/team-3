@@ -6,35 +6,56 @@
 
 exchange:
   base_url: "https://api.codetoimpact.sg"   # sandbox/live URL from the platform team
-  api_key: REPLACE_WITH_TEAM_API_KEY
+  api_key: "REPLACE_WITH_TEAM_API_KEY"
 
 instruments:
-  # Only NOVA and ELXR are traded by the baseline. AXON/CRVX/DRFT are left for
-  # you to add (the strategy router already keys off this config).
   active:
     primary: "NOVA"
     secondary: "ELXR"
+    extra:
+      - "CRVX"
+      - "DRFT"
+      - "AXON"
 
 strategy:
   NOVA:
     type: momentum
     lookback_samples: 10
-    momentum_threshold: 0.003
-    trade_quantity: 100
+    momentum_threshold: 0.008
+    trade_quantity: 50
     limit_offset_bps: 5
   ELXR:
     type: mean_reversion
-    # lookback feels short — mean-reversion is throwing false signals. Check
-    # James Wee's strategy notes before trusting this number.
     lookback_samples: 15
     deviation_threshold: 0.004
-    trade_quantity: 50
+    trade_quantity: 100
+    limit_offset_bps: 5
+  CRVX:
+    type: momentum
+    lookback_samples: 10
+    momentum_threshold: 0.005
+    trade_quantity: 200
+    limit_offset_bps: 5
+  DRFT:
+    type: momentum
+    lookback_samples: 10
+    momentum_threshold: 0.005
+    trade_quantity: 200
+    limit_offset_bps: 5
+  AXON:
+    type: mean_reversion
+    lookback_samples: 15
+    deviation_threshold: 0.004
+    trade_quantity: 100
     limit_offset_bps: 5
 
 risk:
   max_position_primary: 500
-  max_position_secondary: 200
-  # No portfolio-level cap and no stop-loss yet — intentional gaps (bonus work).
+  max_position_secondary: 400
+  max_position:
+    CRVX: 1500
+    DRFT: 1500
+    AXON: 2000
 
 control:
   # Local kill-switch endpoint consumed by the dashboard (via its /bot/* proxy).
