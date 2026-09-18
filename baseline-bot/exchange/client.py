@@ -61,6 +61,12 @@ class ExchangeClient:
         r.raise_for_status()
         return _data(r.json())
 
+    def get_session(self):
+        """Current trading-session state, or None before the first window."""
+        r = self.session.get(f"{self.base_url}/session", timeout=5)
+        r.raise_for_status()
+        return _data(r.json())
+
     def health(self):
         r = self.session.get(f"{self.base_url}/health", timeout=5)
         r.raise_for_status()
