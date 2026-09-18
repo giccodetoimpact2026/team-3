@@ -160,7 +160,7 @@ strategy:
 # every symbol would read WARMUP, WARMUP forbids entries, and the bot would stop
 # trading without saying why.
 regime:
-  enabled: false
+  enabled: true
   classifier: "strategies.regime_adapter.AtrRegimeClassifier"
   # static_regime: "TREND"       # pin one regime for a demo or a bisect
 

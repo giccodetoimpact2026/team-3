@@ -176,9 +176,9 @@ def test_real_config_matches_the_documented_defaults(config):
         assert policy.table(family) == table, family
 
 
-def test_real_config_ships_disabled(config):
-    """Regime sizing remains opt-in after classifier integration."""
-    assert config["regime"]["enabled"] is False
+def test_real_config_ships_enabled(config):
+    """Regime sizing is active — it prevents momentum bleeding in range markets."""
+    assert config["regime"]["enabled"] is True
 
 
 # =========================================================================
