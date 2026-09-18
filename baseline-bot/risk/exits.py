@@ -95,7 +95,8 @@ class ExitPolicy:
     call `reset()` at a session boundary.
     """
 
-    def __init__(self, per_symbol: dict, limit_offset_bps: int = 25):
+    def __init__(self, per_symbol: dict, limit_offset_bps: int = 25,
+                 orderbook=None):
         self._levels = {}
         for symbol, cfg in (per_symbol or {}).items():
             cfg = cfg or {}
@@ -117,17 +118,14 @@ class ExitPolicy:
                     f"trail_pct, or neither")
             if (level["take_profit_pct"] is not None
                     and level["trail_pct"] is not None):
-                # A fixed target always fires before a trail can arm and run,
-                # so configuring both silently disables the trail.
                 raise ValueError(
                     f"{symbol}: set take_profit_pct OR trailing_take_profit, not "
                     f"both — the fixed target would pre-empt the trail")
             if any(v is not None for v in level.values()):
                 self._levels[symbol] = level
 
-        # An exit concedes more of the spread than a strategy order: getting
-        # out matters more than the last basis point of price.
         self.limit_offset_bps = int(limit_offset_bps)
+        self.orderbook = orderbook
         self._peak: dict[str, int] = {}
 
     # --- introspection (for the dashboard / MCP) --------------------------
@@ -225,10 +223,15 @@ class ExitPolicy:
         return None
 
     def _exit(self, reason, symbol, sellable, avg_cost, mark, peak=None):
-        # Close the whole unreserved position, not a strategy-sized clip. An
-        # exit that unwinds 50 shares at a time leaves the rest of the position
-        # exposed for as many fills as it takes.
         offset = mark * self.limit_offset_bps // 10_000
+        fallback = max(1, mark - offset)
+
+        price = fallback
+        if self.orderbook is not None:
+            bid = self.orderbook.best_bid(symbol)
+            if bid is not None and bid >= fallback:
+                price = bid
+
         self._peak.pop(symbol, None)
-        return ExitSignal(reason, symbol, sellable, max(1, mark - offset),
+        return ExitSignal(reason, symbol, sellable, price,
                           avg_cost, mark, peak=peak)

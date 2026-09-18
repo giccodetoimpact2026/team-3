@@ -75,6 +75,15 @@ class RegimeClassifier:
     def classify(self, symbol: str) -> str:
         raise NotImplementedError
 
+    def reset(self, symbol: str | None = None) -> None:
+        """Drop per-window state at a session boundary. Optional.
+
+        Each trading window re-anchors the price engine, so any history a
+        classifier accumulated belongs to the window it was observed in. An
+        implementation that holds no state can leave this as a no-op; the
+        trading path calls it defensively.
+        """
+
 
 class StaticRegimeClassifier(RegimeClassifier):
     """Reports one fixed regime. For tests and for pinning behaviour."""
@@ -147,7 +156,7 @@ class RegimePolicy:
 
     def __init__(self, config: dict | None = None):
         config = config or {}
-        self.enabled = bool(config.get("enabled", False))
+        self.enabled = bool(config.get("enabled", True))
 
         self._policy = {family: dict(table)
                         for family, table in DEFAULT_POLICY.items()}

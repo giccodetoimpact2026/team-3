@@ -2,9 +2,8 @@
 import time
 from unittest.mock import patch as mock_patch
 
-import pytest
 
-from news.engine import NewsEngine, NewsBias, _classify
+from news.engine import NewsEngine, _classify
 
 
 # -- keyword classifier -----------------------------------------------------

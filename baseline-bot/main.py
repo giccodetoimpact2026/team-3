@@ -16,6 +16,7 @@ import yaml
 
 from exchange.client import ExchangeClient
 from exchange.feed import SSEFeed
+from exchange.orderbook import OrderBookCache
 from exchange.ratelimit import RollingWindow
 from orders.manager import OrderManager
 from risk.exits import ExitPolicy
@@ -24,6 +25,7 @@ from strategies.base import Signal
 from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
 from news.engine import NewsEngine
+from news.sentiment import SentimentAnalyzer
 from strategies.pairs import PairsFollowStrategy
 from strategies.regime_policy import RegimePolicy, StaticRegimeClassifier
 from utils.control import ControlServer
@@ -441,16 +443,37 @@ def main():
                                      reserve=limits.get("shared_reserve", 40)),
     )
 
+    ob_cfg = config.get("orderbook", {})
+    book_cache = OrderBookCache(
+        stale_seconds=float(ob_cfg.get("stale_threshold_seconds", 5)),
+    )
+
+    # Attach book cache to each strategy for book-aware pricing + spread filter.
+    spread_limits = ob_cfg.get("max_spread_bps", {})
+    for sym, strat in strategies.items():
+        strat.orderbook = book_cache
+        if sym in spread_limits:
+            strat.max_spread_bps = float(spread_limits[sym])
+
     exits = ExitPolicy(
         config["risk"].get("exits", {}),
         limit_offset_bps=config["risk"].get("exit_limit_offset_bps", 25),
+        orderbook=book_cache,
     )
 
     # --- news engine -----------------------------------------------------------
     news_cfg = config.get("news", {})
-    news_engine = NewsEngine(news_cfg) if news_cfg.get("enabled") else None
-    if news_engine:
-        log("news engine enabled")
+    news_engine = None
+    if news_cfg.get("enabled"):
+        # Tier 1 (S1): the LLM reasons across the supply chain. It authenticates
+        # with the same secret as the exchange — the service has no separate key.
+        analyzer = SentimentAnalyzer(
+            news_cfg.get("llm", {}),
+            api_key=config["exchange"]["api_key"],
+            allowed_symbols=strategies.keys(),
+        )
+        news_engine = NewsEngine(news_cfg, analyzer=analyzer)
+        log(f"news engine enabled; llm sentiment {analyzer.stats()}")
 
     # --- regime policy (James Wee, page 3) -----------------------------------
     # The classifier is a separate component. Until it is wired, the policy is
@@ -494,6 +517,12 @@ def main():
 
     # --- event handlers -----------------------------------------------------
 
+    def on_book_update(payload):
+        symbol = payload.get("symbol")
+        if symbol:
+            book_cache.update(symbol, payload.get("bids", []),
+                              payload.get("asks", []))
+
     def on_session(payload):
         new_status = payload.get("status")
 
@@ -508,6 +537,12 @@ def main():
             for strat in strategies.values():
                 strat.reset()
             exits.reset()
+            book_cache.reset()
+            # The classifier's price history is per-window too: each window
+            # re-anchors the price engine, so a series spanning two would show
+            # a jump that happened in neither.
+            if classifier is not None and hasattr(classifier, "reset"):
+                classifier.reset()
             if news_engine:
                 news_engine.reset()
             state["session_id"] = new_id
@@ -561,11 +596,13 @@ def main():
     feed = SSEFeed(config["exchange"]["base_url"], config["exchange"]["api_key"])
     worker = EventWorker({
         "session": on_session, "price": on_price, "announcement": on_announcement,
+        "book_update": on_book_update,
     })
     worker.start()
     feed.on("session", lambda payload: worker.submit("session", payload))
     feed.on("price", lambda payload: worker.submit("price", payload))
     feed.on("announcement", lambda payload: worker.submit("announcement", payload))
+    feed.on("book_update", lambda payload: worker.submit("book_update", payload))
     feed.start()
     log("bot started")
 
