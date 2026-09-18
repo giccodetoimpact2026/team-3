@@ -124,10 +124,9 @@ def test_each_instrument_gets_evaluated(client, config):
 
 
 def test_reconnect_preserves_cursor_on_snapshot(monkeypatch):
-    feed = SSEFeed("http://test")
+    feed = SSEFeed("http://test", "test-key")
     response = Mock()
-    response.__enter__ = Mock(return_value=response)
-    response.__exit__ = Mock(return_value=False)
+    response.headers = {"Content-Type": "text/event-stream"}
     get = Mock(return_value=response)
     monkeypatch.setattr("exchange.feed.requests.get", get)
 

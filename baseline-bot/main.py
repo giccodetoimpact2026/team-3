@@ -8,6 +8,8 @@ import os
 import signal
 import sys
 import threading
+import time
+import uuid
 
 import yaml
 
@@ -99,6 +101,93 @@ def halt(client, lifecycle, shutdown_event):
     else:
         log("lifecycle: STOPPED — all orders resolved")
     return unknown
+
+
+class Bot:
+    def __init__(self, client, config, trade=False):
+        self.client = client
+        self.config = config
+        self.trade = trade
+        self.session_id = None
+        self.unknown_key = None
+        self.stopping = threading.Event()
+
+        primary = config["instruments"]["active"]["primary"]
+        secondary = config["instruments"]["active"]["secondary"]
+        self.strategies = {
+            primary: build_strategy(primary, config["strategy"][primary]),
+            secondary: build_strategy(secondary, config["strategy"][secondary]),
+        }
+        self.risk = RiskLimits(
+            config["risk"]["max_position_primary"],
+            config["risk"]["max_position_secondary"],
+            primary, secondary,
+        )
+
+    def evaluate(self, strategy):
+        session = self.client.get_session()
+        new_id = session.get("id")
+        if new_id and new_id != self.session_id:
+            for s in self.strategies.values():
+                s.prices.clear()
+            self.session_id = new_id
+
+        if session.get("mode") == "live":
+            return
+        if not self.trade:
+            return
+
+        orders = self.client.get_orders()
+
+        if self.unknown_key:
+            if any(o.get("idempotency_key") == self.unknown_key for o in orders):
+                self.unknown_key = None
+            else:
+                return
+
+        if any(
+            o.get("symbol") == strategy.symbol
+            and o.get("status") in ("OPEN", "PARTIALLY_FILLED")
+            for o in orders
+        ):
+            return
+
+        position = self.client.get_positions(strategy.symbol)
+        signal = strategy.signal(position)
+        if signal is None:
+            return
+
+        if signal.side == "buy" and not self.risk.allows_buy(
+            strategy.symbol, position, signal.quantity
+        ):
+            return
+
+        key = str(uuid.uuid4())
+        try:
+            self.client.submit_limit_order(
+                strategy.symbol, signal.side, signal.quantity, signal.limit_price, key,
+            )
+        except Exception:
+            self.unknown_key = key
+            raise
+
+    def shutdown(self):
+        orders = self.client.get_orders()
+        for order in orders:
+            if order.get("status") in ("OPEN", "PARTIALLY_FILLED"):
+                self.client.cancel_order(order["id"])
+        time.sleep(1)
+        self.client.get_orders()
+        self.stopping.set()
+        return True
+
+    def on_price(self, payload):
+        symbol = payload.get("symbol")
+        strategy = self.strategies.get(symbol)
+        if strategy is None:
+            return
+        strategy.on_price(payload["last_price"])
+        self.evaluate(strategy)
 
 
 def main():
