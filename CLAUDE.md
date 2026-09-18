@@ -19,3 +19,14 @@ reviewed the SSE/rate-limit design, the stale-value rules and the CSV cost-basis
 and verified the page in a browser against the sandbox exchange with the MCP server
 running, including forced feed and MCP failures. No LLM feature is part of the dashboard
 yet; the conversational panel remains open work and must use the organizer LLM service.
+
+## Heartbeat, order journal and lifecycle hardening
+
+Implemented with Claude Code from `team-execution-plan.md` (P1 H2 heartbeat and
+feed-stall watchdog, P4 H2 order events, P3 H2 config validation) and the stakeholder
+records (note 7: heartbeat-based health; note 8: bot-internal state over a direct
+bot→dashboard channel, not MCP). AI wrote the heartbeat module, the order journal and
+burst throttle in the order manager, the control routes, the dashboard view and
+history changes and their tests. Bot and dashboard unit suites pass; a bot smoke run
+against the sandbox exchange exercised `/status`, `/orders` and `/halt`. Human review
+of the halt ordering and the watchdog thresholds remains required.

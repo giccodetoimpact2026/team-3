@@ -81,18 +81,45 @@
   }
 
   // Bot state pill and kill-switch button, from GET /bot/status (or null when
-  // the bot did not answer). `canHalt` is false once the bot is already
+  // the bot did not answer). Health is heartbeat-based, not a REST-ping dot
+  // (stakeholder note 7): the bot beats every ~5 s and reports the age of its
+  // last beat on its own clock, so a hung trading process still answers HTTP
+  // but its heartbeat age climbs. `canHalt` is false once the bot is already
   // stopping or gone, so the button cannot fire at nothing.
-  //   RUNNING   -> green, button enabled
-  //   QUIESCING -> amber, cancelling in progress
-  //   STOPPED   -> red (halted)
-  //   null      -> grey OFFLINE (process not running, or proxy down)
+  //   RUNNING, heartbeat fresh   -> green, button enabled
+  //   RUNNING, heartbeat > 15 s  -> red DEAD, button still enabled (cancel what you can)
+  //   QUIESCING                  -> amber, cancelling in progress
+  //   STOPPED                    -> red (halted)
+  //   null / no answer           -> grey OFFLINE (process not running, or proxy down)
+  // `detail` is the feed line shown as the pill's tooltip: feed state, age, pauses.
+  var HEARTBEAT_DEAD_AFTER_S = 15;
   function botStatusView(status) {
     var state = status && status.state ? String(status.state).toUpperCase() : null;
-    if (state === "RUNNING") return { label: "BOT RUNNING", cls: "running", canHalt: true };
-    if (state === "QUIESCING") return { label: "BOT HALTING…", cls: "quiescing", canHalt: false };
-    if (state === "STOPPED") return { label: "BOT HALTED", cls: "stopped", canHalt: false };
-    return { label: "BOT OFFLINE", cls: "offline", canHalt: false };
+    var detail = botDetail(status);
+    if (state === "RUNNING") {
+      var age = status.heartbeat_age_s;
+      var dead = typeof age === "number" && age > HEARTBEAT_DEAD_AFTER_S;
+      if (dead) return { label: "BOT DEAD", cls: "dead", canHalt: true, detail: "no heartbeat for " + Math.round(age) + "s · " + detail };
+      var paused = status.orders && status.orders.paused;
+      var feed = String(status.feed_state || "").toUpperCase();
+      if (paused) return { label: "BOT PAUSED", cls: "quiescing", canHalt: true, detail: detail };
+      if (feed === "DEAD" || feed === "DEGRADED") return { label: "BOT RUNNING · FEED " + feed, cls: "degraded", canHalt: true, detail: detail };
+      return { label: "BOT RUNNING", cls: "running", canHalt: true, detail: detail };
+    }
+    if (state === "QUIESCING") return { label: "BOT HALTING…", cls: "quiescing", canHalt: false, detail: detail };
+    if (state === "STOPPED") return { label: "BOT HALTED", cls: "stopped", canHalt: false, detail: detail };
+    return { label: "BOT OFFLINE", cls: "offline", canHalt: false, detail: "no answer from the bot control endpoint" };
+  }
+
+  function botDetail(status) {
+    if (!status) return "";
+    var parts = [];
+    if (status.feed_state) parts.push("feed " + String(status.feed_state).toLowerCase() + (typeof status.feed_age_s === "number" ? " (" + status.feed_age_s + "s since last event)" : ""));
+    if (typeof status.heartbeat_age_s === "number") parts.push("heartbeat " + status.heartbeat_age_s + "s ago");
+    var o = status.orders || {};
+    if (typeof o.active_orders === "number") parts.push(o.active_orders + " resting, " + (o.unknown_orders || 0) + " unknown");
+    if (o.paused) parts.push("paused: " + (o.pause_reason || "order-rate anomaly") + " (" + (o.pause_remaining_s || 0) + "s left)");
+    return parts.join(" · ");
   }
 
   // One-line outcome of POST /bot/halt for the operator.
@@ -102,5 +129,5 @@
     return "Halted. All open orders cancelled.";
   }
 
-  return { positionRows, FeedCursor, escapeHtml, botStatusView, haltResultText };
+  return { positionRows, FeedCursor, escapeHtml, botStatusView, haltResultText, HEARTBEAT_DEAD_AFTER_S };
 });

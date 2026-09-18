@@ -164,6 +164,11 @@ tbody tr:last-child td {
 .badge.bot.quiescing { background: #fef3c7; color: #92400e; }
 .badge.bot.stopped { background: #fee2e2; color: #991b1b; }
 .badge.bot.offline { background: #e5e7eb; color: #6b7280; }
+.badge.bot.degraded { background: #fef3c7; color: #92400e; }
+.badge.bot.dead { background: #b91c1c; color: #fff; animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.55; } }
+.order-status.unknown { background: #fef3c7; color: #92400e; }
+td.src { color: var(--muted); font-size: 11px; }
 .btn.danger { background: #b91c1c; font-weight: 700; letter-spacing: 0.06em; margin-right: 12px; }
 .btn.danger:hover:not(:disabled) { background: #991b1b; }
 .btn.danger:disabled { background: #e5e7eb; color: #9ca3af; }

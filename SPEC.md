@@ -6,8 +6,18 @@ startup and reliable NOVA/ELXR operation, per the team's instruction.
 Implemented: BUG-001 shutdown cancellation, BUG-011 SSE reconnect/replay, BUG-012
 ELXR lookback 15, and the bot portion of BUG-019 (missing position = zero). Supporting
 work includes environment credentials, runtime symbol validation, per-symbol evaluation
-throttling, no pending-order stacking, unknown submission reconciliation, session-history
-reset, observation mode and sandbox-only trading unless live is explicitly enabled.
+throttling, no pending-order stacking, unknown submission reconciliation and
+session-history reset. There is no observation mode or live/sandbox gate in the run
+loop: the bot trades whatever `EXCHANGE_BASE_URL` points at once the session is open.
+
+Bot health and control: a heartbeat every 5 s exposed on `GET /status` with feed state
+and age; a feed-stall watchdog restarting the SSE stream after 20 s without an event;
+an order journal on `GET /orders?since=N` (every submit, fill, cancel and
+reconciliation, with exchange codes); `POST /halt` and SIGINT/SIGTERM block new
+intents atomically, cancel through the order manager, report unresolved cancels and
+exit non-zero when any remain. A burst above `max_orders_per_minute` pauses new intents
+(BUG-003). Startup validation rejects a placeholder key, non-positive sizes or
+lookbacks, thresholds outside (0,1), bad ports and heartbeat timings.
 
 Acceptance: local strategy/runtime tests and lint pass; an authenticated sandbox check
 and trading smoke test remain pending a locally configured team key. No profitability
@@ -38,10 +48,18 @@ dashboard saw while open; a fill that happened while the page was closed appears
 single `FILLED` row. Per-fill realized P&L in the export is reconstructed from the
 session's fills and the current volume-weighted cost basis.
 
-Deferred from this increment: kill-switch UI, heartbeat health dot, ATR routing,
-additional instruments, stop-losses, portfolio caps and the AI/MCP conversational panel.
-These are unfinished, not removed from the overall hackathon scope. DRFT remains off.
-Emergency halt should be immediate; parameter changes need two-step confirmation.
+Dashboard health and order channel: the bot pill is heartbeat-based (more than 15 s
+without a beat shows DEAD even when the endpoint answers; feed DEGRADED/DEAD and an
+order-rate pause are shown on the pill). The lifecycle table and the rejected counter
+are fed from the bot's order journal as well as `GET /orders`, so REJECTED and UNKNOWN
+submits appear with their codes and bot-side SGT timestamps. A market-wide `trade`
+event no longer triggers an orders re-read while the bot reports nothing resting.
+
+Deferred from this increment: ATR routing, stop-losses, portfolio caps (waiting on the
+strategy-centric allocator design) and the AI/MCP conversational panel. These are
+unfinished, not removed from the overall hackathon scope. DRFT remains off here;
+`origin/main` enables it with the other instruments. Emergency halt is immediate;
+parameter changes need two-step confirmation.
 
 Architecture: Python strategy instances consume public exchange SSE; authenticated REST
 reads gate limit-only, integer-cent, long-only orders. The dashboard is a separate

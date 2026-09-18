@@ -9,7 +9,7 @@ import requests
 
 from exchange.client import ExchangeClient
 from exchange.ratelimit import RollingWindow
-from exchange.results import CancelOutcome, Outcome, SubmitResult
+from exchange.results import CancelOutcome, CancelResult, Outcome, SubmitResult
 from orders.manager import OrderManager
 from risk.limits import RiskLimits
 
@@ -351,3 +351,87 @@ def test_cancel_result_settles_on_not_cancellable():
         400, {"status": "error", "error": {"code": "ORDER_NOT_CANCELLABLE"}}))
     result = c.cancel_order("o1")
     assert result.outcome is CancelOutcome.NOT_CANCELLABLE and result.settled
+
+
+# --- journal (bot -> dashboard order events) and burst throttle ------------
+
+def test_journal_records_ack_rejection_and_terminal_sync(manager, client, clock):
+    manager.submit_intent("NOVA", "buy", 100, 4250)
+    client.submit_limit_order.return_value = SubmitResult(
+        Outcome.REJECTED, "k2", code="PRICE_OUT_OF_BAND")
+    manager.submit_intent("ELXR", "buy", 50, 9000)
+    client.get_orders.return_value = [
+        {"id": "o1", "status": "FILLED", "remaining_qty": 0, "idempotency_key": "k"}]
+    clock.advance(2)
+    manager.poll()
+
+    events = manager.events_since(0)
+    assert [(e["kind"], e["status"], e["symbol"]) for e in events] == [
+        ("submit", "OPEN", "NOVA"),
+        ("submit", "REJECTED", "ELXR"),
+        ("sync", "FILLED", "NOVA"),
+    ]
+    assert events[1]["code"] == "PRICE_OUT_OF_BAND"
+    assert events[2]["filled"] == 100
+    assert [e["seq"] for e in events] == [1, 2, 3]
+    assert manager.events_since(2)[0]["seq"] == 3
+    assert manager.journal_page(3) == {"seq": 3, "events": []}
+
+
+def test_journal_records_unknown_then_reconciled(manager, client, clock):
+    client.submit_limit_order.return_value = SubmitResult(
+        Outcome.UNKNOWN, "k", code="GATEWAY_TIMEOUT")
+    manager.submit_intent("NOVA", "buy", 100, 4250)
+    key = manager.events_since(0)[0]["idempotency_key"]
+    client.get_orders.return_value = [
+        {"id": "o7", "status": "OPEN", "remaining_qty": 100, "idempotency_key": key}]
+    clock.advance(3)
+    manager.poll()
+    kinds = [(e["kind"], e["status"], e["code"]) for e in manager.events_since(0)]
+    assert kinds == [("submit", "UNKNOWN", "GATEWAY_TIMEOUT"),
+                     ("reconcile", "OPEN", "LANDED")]
+
+
+def test_journal_records_cancels(manager, client):
+    manager.submit_intent("NOVA", "buy", 100, 4250)
+    client.get_orders.return_value = [{"id": "o1", "status": "OPEN"}]
+    client.cancel_order.return_value = CancelResult(CancelOutcome.CANCELLED, "o1")
+    manager.cancel_all()
+    last = manager.events_since(0)[-1]
+    assert (last["kind"], last["status"], last["order_id"], last["symbol"]) == (
+        "cancel", "CANCELLED", "o1", "NOVA")
+
+
+def test_burst_of_submits_pauses_the_bot(client, clock):
+    risk = RiskLimits(5000, 200, "NOVA", "ELXR")
+    m = OrderManager(client, risk, session_id="w1", clock=clock,
+                     max_active_per_symbol=100,
+                     anomaly_limiter=RollingWindow(3, 60.0, clock=clock),
+                     anomaly_pause_seconds=60)
+    n = 0
+    for i in range(6):
+        client.submit_limit_order.return_value = SubmitResult(
+            Outcome.ACKNOWLEDGED, "k", order_id=f"o{i}", status="OPEN", remaining_qty=10)
+        if m.submit_intent("NOVA", "buy", 10, 4250) is not None:
+            n += 1
+    assert n == 3
+    assert m.paused()
+    assert m.status()["paused"] is True
+    assert "anomaly" in m.status()["pause_reason"]
+    assert client.submit_limit_order.call_count == 3
+
+    clock.advance(61)
+    assert not m.paused()
+    m.submit_intent("NOVA", "buy", 10, 4250)
+    assert client.submit_limit_order.call_count == 4
+
+
+def test_status_snapshot(manager, client):
+    manager.submit_intent("NOVA", "buy", 100, 4250)
+    s = manager.status()
+    assert s["active_orders"] == 1
+    assert s["active_symbols"] == ["NOVA"]
+    assert s["unknown_orders"] == 0
+    assert s["blocked"] is False
+    assert s["paused"] is False
+    assert s["journal_seq"] == 1

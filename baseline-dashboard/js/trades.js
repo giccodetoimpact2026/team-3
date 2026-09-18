@@ -34,6 +34,7 @@
   // injected (localStorage in the browser) and every access is guarded: it
   // may be unavailable or throw in private mode.
   function LifecycleHistory(sessionId, storage) {
+    this.sessionId = sessionId || null;
     this.key = "lifecycle:" + (sessionId || "");
     this.storage = storage;
     this.last = {}; // orderId -> last normalized status
@@ -71,6 +72,42 @@
     }
     return changed;
   };
+  // Bot journal entries (GET /bot/orders). These carry exact statuses and
+  // bot-side timestamps for transitions the exchange's GET /orders can never
+  // show: a REJECTED submit, an UNKNOWN (timed-out) submit and its
+  // reconciliation, and a cancel the bot could not confirm. Each entry has a
+  // per-process `seq`; the highest seen is kept so a poll can ask "since".
+  // A journal entry is keyed by order id when the bot has one, else by the
+  // idempotency key, so a later exchange sighting of the same order does not
+  // duplicate the row when the status is unchanged.
+  // SETTLED means "already filled or cancelled when we tried to cancel": the
+  // exchange's own status for it arrives through observe(), so it is skipped.
+  var JOURNAL_STATUS = { NOT_LANDED: "REJECTED" };
+  LifecycleHistory.prototype.record = function (events) {
+    var self = this;
+    var changed = false;
+    (events || []).forEach(function (e) {
+      if (!e) return;
+      var id = e.order_id || e.idempotency_key;
+      if (!id) return;
+      var raw = String(e.status || "").toUpperCase();
+      if (raw === "SETTLED") return;
+      var status = normalizeStatus(JOURNAL_STATUS[raw] || raw);
+      if (self.last[id] === status) return;
+      self.last[id] = status;
+      self.list.push({
+        orderId: id, status: status, at: e.at || "", remaining: e.remaining,
+        source: "bot", symbol: e.symbol, side: e.side, quantity: e.quantity, price: e.price, code: e.code || undefined,
+      });
+      changed = true;
+    });
+    if (changed) {
+      this.list.sort(byTime);
+      this._save();
+    }
+    return changed;
+  };
+
   LifecycleHistory.prototype.entries = function () {
     return this.list.slice();
   };
@@ -82,17 +119,21 @@
 
   // Session totals Gerald wants always visible: buy orders, sell orders,
   // orders that were ever partially filled, rejected orders.
+  // Rejected submits never become exchange orders, so they are counted from
+  // the history (fed by the bot journal) as well as from GET /orders.
   function counters(orders, history) {
     var c = { buy: 0, sell: 0, partial: 0, rejected: 0 };
     var partial = history ? history.reached("PARTIALLY_FILLED") : {};
+    var rejected = history ? history.reached("REJECTED") : {};
     (orders || []).forEach(function (o) {
       if (String(o.side).toLowerCase() === "buy") c.buy++;
       else if (String(o.side).toLowerCase() === "sell") c.sell++;
       var s = normalizeStatus(o.status);
-      if (s === "REJECTED") c.rejected++;
+      if (s === "REJECTED") rejected[o.id] = true;
       if (s === "PARTIALLY_FILLED") partial[o.id] = true;
     });
     c.partial = Object.keys(partial).length;
+    c.rejected = Object.keys(rejected).length;
     return c;
   }
 

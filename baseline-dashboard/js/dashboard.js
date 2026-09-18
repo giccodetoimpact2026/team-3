@@ -7,9 +7,13 @@
 // Data flow:
 //   /exchange/events (SSE)
 //     price   ──▶ refreshPortfolio (coalesced, ≥1s apart)
-//     trade   ──▶ refreshAll: portfolio + orders + MCP P&L (coalesced)
+//     trade   ──▶ refreshAll: portfolio + orders + MCP P&L (coalesced); when
+//                 the bot reports nothing resting or unknown, only the portfolio
 //     session ──▶ refreshAll; session id change resets session-scoped state
 //   GET /instruments once at startup and again on session change.
+//   /bot/status every 3 s: lifecycle + heartbeat + feed health -> bot pill
+//   /bot/orders?since=N with it: the bot's order journal -> lifecycle table
+//   (exact codes incl. REJECTED / UNKNOWN, which GET /orders never shows).
 //
 // Pure logic lives in format.js, view.js and trades.js (unit-tested in Node).
 // Every exchange-supplied string rendered into HTML goes through escapeHtml.
@@ -21,6 +25,8 @@ const DashboardController = {
   portfolio: null,
   orders: [],
   pnl: null, // last MCP get_pnl response
+  bot: null, // last GET /bot/status payload, or null when the bot did not answer
+  _journalSeq: 0, // cursor into the bot's order journal (per bot process)
   _timers: { portfolio: null, all: null },
   _lastAt: { portfolio: 0, all: 0 },
 
@@ -49,13 +55,40 @@ const DashboardController = {
     var self = this;
     if (this._halting) return; // the halt response renders the final state
     BotAPI.getStatus()
-      .then(function (status) { self.renderBotStatus(status); })
-      .fail(function () { self.renderBotStatus(null); });
+      .then(function (status) {
+        self.bot = status;
+        self.renderBotStatus(status);
+        self.pollBotOrders();
+      })
+      .fail(function () {
+        self.bot = null;
+        self.renderBotStatus(null);
+      });
+  },
+
+  // The bot -> dashboard order channel. Entries are keyed by a per-process
+  // sequence; a `seq` below our cursor means the bot restarted, so start over.
+  pollBotOrders: function () {
+    var self = this;
+    BotAPI.getOrderEvents(this._journalSeq).then(function (page) {
+      if (!page) return;
+      var latest = Number(page.seq || 0);
+      if (latest < self._journalSeq) {
+        self._journalSeq = 0;
+        return self.pollBotOrders();
+      }
+      var events = (page.events || []).filter(function (e) {
+        // A journal can hold entries from the previous window; the history is per window.
+        return !e.session_id || !self.history.sessionId || e.session_id === self.history.sessionId;
+      });
+      if (page.events && page.events.length) self._journalSeq = page.events[page.events.length - 1].seq;
+      if (events.length && self.history.record(events)) self.renderOrders();
+    });
   },
 
   renderBotStatus: function (status) {
     var v = botStatusView(status);
-    $("#bot-state").removeClass("running quiescing stopped offline").addClass(v.cls).text(v.label);
+    $("#bot-state").removeClass("running degraded dead quiescing stopped offline").addClass(v.cls).text(v.label).attr("title", v.detail || "");
     $("#kill-switch").prop("disabled", !v.canHalt || this._halting);
   },
 
@@ -127,10 +160,14 @@ const DashboardController = {
       self.requestRefresh("portfolio");
     });
     es.addEventListener("trade", function (e) {
-      // Market-wide; it does not say whose fill it was. Treat it as a signal
-      // that our orders/fills may have changed and re-read them.
+      // Market-wide; it does not say whose fill it was. When the bot reports
+      // nothing resting and nothing unknown, none of our orders can have
+      // changed, so only the portfolio (marks) is re-read; otherwise treat it
+      // as a signal that our orders/fills may have changed and re-read them.
       if (!self.cursor.accept(e.lastEventId)) return;
-      self.requestRefresh("all");
+      var o = self.bot && self.bot.orders;
+      var quiet = o && o.active_orders === 0 && o.unknown_orders === 0;
+      self.requestRefresh(quiet ? "portfolio" : "all");
     });
     es.addEventListener("session", function (e) {
       if (!self.cursor.accept(e.lastEventId)) return;
@@ -293,8 +330,11 @@ const DashboardController = {
     var byId = {};
     this.orders.forEach(function (o) { byId[o.id] = o; });
     var rows = this.history.entries().slice().reverse().map(function (e) { // newest first on screen
-      var o = byId[e.orderId] || {};
+      // Exchange order when it exists; otherwise the bot journal's own copy
+      // (a REJECTED or UNKNOWN submit has no exchange order to look up).
+      var o = byId[e.orderId] || { symbol: e.symbol, side: e.side, quantity: e.quantity, price: e.price };
       var remaining = e.remaining !== undefined && e.remaining !== null ? e.remaining : o.remaining_qty;
+      var title = (e.source === "bot" ? "reported by the bot" : "seen on the exchange") + (e.code ? " · " + e.code : "");
       return (
         "<tr>" +
         "<td class=\"mono\" title=\"" + escapeHtml(e.orderId) + "\">" + escapeHtml(String(e.orderId || "").slice(0, 8)) + "</td>" +
@@ -303,14 +343,14 @@ const DashboardController = {
         "<td>" + escapeHtml(String(o.side || "").toUpperCase()) + "</td>" +
         "<td class=\"num\">" + escapeHtml(o.quantity) + "</td>" +
         "<td class=\"num\">" + escapeHtml(formatCurrencyOrDash(o.price)) + "</td>" +
-        "<td class=\"num\">" + escapeHtml(remaining === undefined ? "—" : remaining) + "</td>" +
-        "<td><span class=\"order-status " + escapeHtml(e.status.toLowerCase()) + "\">" + escapeHtml(e.status) + "</span></td>" +
+        "<td class=\"num\">" + escapeHtml(remaining === undefined || remaining === null ? "—" : remaining) + "</td>" +
+        "<td title=\"" + escapeHtml(title) + "\"><span class=\"order-status " + escapeHtml(e.status.toLowerCase()) + "\">" + escapeHtml(e.status) + (e.code ? " <small>" + escapeHtml(e.code) + "</small>" : "") + "</span></td>" +
         "</tr>"
       );
     }).join("");
     $("#lifecycle-body").html(rows || "<tr><td colspan=\"8\" class=\"empty\">No orders observed this session</td></tr>").removeClass("stale");
     $("#lifecycle-count").text(this.history.entries().length + " transitions · " + this.orders.length + " orders");
-    $("#export-csv").prop("disabled", this.orders.length === 0);
+    $("#export-csv").prop("disabled", this.orders.length === 0 && this.history.entries().length === 0);
   },
 
   renderPnl: function (resp) {

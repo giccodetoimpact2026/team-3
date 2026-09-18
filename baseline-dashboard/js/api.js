@@ -43,13 +43,29 @@ const ExchangeAPI = {
 };
 
 // The bot's local control endpoint, reached through the /bot proxy in
-// server.js. This is the one place the dashboard sends a command to the bot.
-// Both calls answer {state, session_id, session_open[, unresolved]}.
+// server.js. This is the one place the dashboard sends a command to the bot,
+// and the direct bot -> dashboard channel for bot-internal state (heartbeat,
+// feed health, order events), which the MCP server does not carry.
 const BotAPI = {
-  // GET /status -> lifecycle snapshot. Fails when the bot process is not up.
+  // GET /status -> {state, session_id, session_open, unresolved, heartbeat_*,
+  // feed_*, orders: {...}}. Fails when the bot process is not up.
   getStatus: function () {
     return $.ajax({
       url: CONFIG.BOT_BASE_URL + "/status",
+      method: "GET",
+      dataType: "json",
+      timeout: 4000,
+    });
+  },
+
+  // GET /orders?since=N -> {seq, events: [...]}: every submit, fill, cancel
+  // and reconciliation the bot performed after journal entry N. This is how
+  // the lifecycle table learns about REJECTED submits and UNKNOWN orders,
+  // which never appear in the exchange's GET /orders, and about our own fills
+  // (the public SSE trade event carries no order id).
+  getOrderEvents: function (since) {
+    return $.ajax({
+      url: CONFIG.BOT_BASE_URL + "/orders?since=" + encodeURIComponent(since || 0),
       method: "GET",
       dataType: "json",
       timeout: 4000,

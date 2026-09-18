@@ -34,7 +34,30 @@ strategy:
 risk:
   max_position_primary: 500
   max_position_secondary: 200
-  # No portfolio-level cap and no stop-loss yet — intentional gaps (bonus work).
+  # At most this many live orders per symbol; a persistent signal cannot stack.
+  max_active_orders_per_symbol: 1
+  # Order-rate anomaly throttle (BUG-003): more submits than this inside one
+  # minute pauses new intents for anomaly_pause_seconds and is reported on
+  # GET /status. Resting orders are left alone.
+  max_orders_per_minute: 20
+  anomaly_pause_seconds: 60
+  # No portfolio-level cap and no stop-loss yet — pending the allocator design.
+
+rate_limits:
+  # Exchange tiers, per team, rolling window (exchange-api-reference §Rate limits).
+  window_seconds: 30
+  orders_per_window: 100
+  shared_per_window: 300
+  shared_reserve: 40          # slots held back for cancels and 504 reconciliation
+
+heartbeat:
+  # Liveness for the dashboard (emit every ~5 s; the dashboard shows DEAD after
+  # 15 s without one) and the feed-stall watchdog thresholds, in seconds since
+  # the last SSE event. Above feed_stall_after_seconds the stream is restarted
+  # from its Last-Event-ID cursor.
+  interval_seconds: 5
+  feed_degraded_after_seconds: 10
+  feed_stall_after_seconds: 20
 
 control:
   # Local kill-switch endpoint consumed by the dashboard (via its /bot/* proxy).

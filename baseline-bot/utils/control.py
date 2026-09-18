@@ -4,8 +4,12 @@ A tiny standard-library HTTP server on a daemon thread. It is bound to
 localhost only and carries no authentication: the dashboard dev server
 (baseline-dashboard/server.js) proxies /bot/* to it on the same machine.
 
-    GET  /status  -> {"state": "RUNNING", "session_id": ..., "session_open": bool}
-    POST /halt    -> {"state": "STOPPED", "unresolved": 0}
+    GET  /status            -> {"state": "RUNNING", "session_id": ..., "session_open": bool,
+                                heartbeat_*/feed_* from the Heartbeat, orders: {...}}
+    GET  /orders?since=<n>  -> {"seq": <latest>, "events": [...]}  the OrderManager
+                               journal after seq n: every submit, fill, cancel and
+                               reconciliation this process performed
+    POST /halt              -> {"state": "STOPPED", "unresolved": 0}
 
 `/halt` runs the same halt() path as SIGINT/SIGTERM: block new intents,
 cancel every open order, stop. Calling it twice is safe; the second call
@@ -23,11 +27,17 @@ class ControlServer:
 
     status_fn() -> dict         current lifecycle snapshot
     halt_fn()   -> int | None   run the halt path; returns unresolved count
+    events_fn(since) -> dict    {"seq": latest journal seq, "events": [entries with
+                                seq > since]} (optional). `seq` is the manager's
+                                current counter even when nothing is returned, so a
+                                consumer holding a stale cursor from a previous bot
+                                process resyncs instead of waiting forever.
     """
 
-    def __init__(self, status_fn, halt_fn, host="127.0.0.1", port=8092):
+    def __init__(self, status_fn, halt_fn, host="127.0.0.1", port=8092, events_fn=None):
         self._status_fn = status_fn
         self._halt_fn = halt_fn
+        self._events_fn = events_fn
         self._halt_lock = threading.Lock()
         self._server = ThreadingHTTPServer((host, port), self._handler_class())
         self._server.daemon_threads = True
@@ -72,8 +82,19 @@ class ControlServer:
                 self.wfile.write(data)
 
             def do_GET(self):
-                if self.path == "/status":
+                path, _, query = self.path.partition("?")
+                if path == "/status":
                     return self._send(200, outer._status_fn())
+                if path == "/orders" and outer._events_fn is not None:
+                    since = 0
+                    for part in query.split("&"):
+                        k, _, v = part.partition("=")
+                        if k == "since":
+                            try:
+                                since = int(v)
+                            except ValueError:
+                                return self._send(400, {"error": "since must be an integer"})
+                    return self._send(200, outer._events_fn(since))
                 self._send(404, {"error": "not found"})
 
             def do_POST(self):

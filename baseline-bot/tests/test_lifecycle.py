@@ -1,27 +1,46 @@
-"""Tests for P3 fixes: session bootstrap, boundary reset, graceful shutdown."""
+"""Tests for the lifecycle: halt path, session boundary, bootstrap."""
 import threading
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 
-from main import RUNNING, QUIESCING, STOPPED, halt
+from exchange.results import CancelOutcome, CancelResult, Outcome, SubmitResult
+from main import QUIESCING, RUNNING, STOPPED, halt
+from orders.manager import OrderManager
+from risk.limits import RiskLimits
 from strategies.momentum import MomentumStrategy
+
+
+def _client(orders=(), cancel=None):
+    c = Mock()
+    c.get_orders.return_value = list(orders)
+    c.get_portfolio.return_value = {
+        "session_id": "w1", "cash": 1_000_000_000, "reserved_cash": 0, "positions": []}
+    c.cancel_order.side_effect = cancel or (
+        lambda oid: CancelResult(CancelOutcome.CANCELLED, oid))
+    c.submit_limit_order.return_value = SubmitResult(
+        Outcome.ACKNOWLEDGED, "k", order_id="o1", status="OPEN", remaining_qty=100)
+    return c
+
+
+def _manager(client):
+    return OrderManager(client, RiskLimits(500, 200, "NOVA", "ELXR"), session_id="w1")
 
 
 # ---------------------------------------------------------------------------
 # halt() — P0-11, P0-14
 # ---------------------------------------------------------------------------
 
-def test_halt_cancels_open_orders():
-    client = MagicMock()
-    client.get_orders.return_value = [
+def test_halt_cancels_open_orders_and_stops():
+    client = _client([
         {"id": "order-1", "status": "OPEN"},
         {"id": "order-2", "status": "PARTIALLY_FILLED"},
         {"id": "order-3", "status": "FILLED"},
-    ]
+    ])
     lifecycle = {"value": RUNNING}
     shutdown_event = threading.Event()
 
-    halt(client, lifecycle, shutdown_event)
+    unresolved = halt(_manager(client), lifecycle, shutdown_event)
 
+    assert unresolved == 0
     assert client.cancel_order.call_count == 2
     client.cancel_order.assert_any_call("order-1")
     client.cancel_order.assert_any_call("order-2")
@@ -29,123 +48,113 @@ def test_halt_cancels_open_orders():
     assert shutdown_event.is_set()
 
 
-def test_halt_sets_quiescing_before_cancelling():
-    observed_states = []
+def test_halt_blocks_intents_before_the_first_cancel():
+    """No fresh order may slip in between enumeration and cancellation."""
+    client = _client([{"id": "order-1", "status": "OPEN"}])
+    orders = _manager(client)
+    seen = []
 
-    client = MagicMock()
+    def cancel(oid):
+        seen.append((lifecycle["value"], orders.blocked))
+        return CancelResult(CancelOutcome.CANCELLED, oid)
 
-    def record_state_on_get_orders():
-        observed_states.append(lifecycle["value"])
-        return []
+    client.cancel_order.side_effect = cancel
+    lifecycle = {"value": RUNNING}
 
-    client.get_orders.side_effect = record_state_on_get_orders
+    halt(orders, lifecycle, threading.Event())
+
+    assert seen == [(QUIESCING, True)]
+    assert orders.submit_intent("NOVA", "buy", 100, 4250) is None
+    client.submit_limit_order.assert_not_called()
+
+
+def test_halt_treats_already_filled_as_settled():
+    client = _client([{"id": "order-1", "status": "OPEN"}],
+                     cancel=lambda oid: CancelResult(
+                         CancelOutcome.NOT_CANCELLABLE, oid, code="ORDER_NOT_CANCELLABLE"))
+    lifecycle = {"value": RUNNING}
+
+    unresolved = halt(_manager(client), lifecycle, threading.Event())
+
+    assert unresolved == 0
+    assert lifecycle["value"] == STOPPED
+
+
+def test_halt_reports_a_timed_out_cancel_as_unresolved():
+    """A cancel whose fate is unknown must not be reported as done."""
+    client = _client([{"id": "order-1", "status": "OPEN"}],
+                     cancel=lambda oid: CancelResult(CancelOutcome.UNKNOWN, oid, code="TIMEOUT"))
     lifecycle = {"value": RUNNING}
     shutdown_event = threading.Event()
 
-    halt(client, lifecycle, shutdown_event)
+    unresolved = halt(_manager(client), lifecycle, shutdown_event)
 
-    assert observed_states == [QUIESCING]
-
-
-def test_halt_tolerates_already_filled_cancel():
-    client = MagicMock()
-    client.get_orders.return_value = [
-        {"id": "order-1", "status": "OPEN"},
-    ]
-    client.cancel_order.side_effect = Exception("ORDER_NOT_CANCELLABLE")
-    lifecycle = {"value": RUNNING}
-    shutdown_event = threading.Event()
-
-    unknown = halt(client, lifecycle, shutdown_event)
-
-    assert unknown == 1
+    assert unresolved == 1
+    assert lifecycle["unresolved"] == 1
     assert lifecycle["value"] == STOPPED
     assert shutdown_event.is_set()
 
 
 def test_halt_with_no_open_orders():
-    client = MagicMock()
-    client.get_orders.return_value = [
-        {"id": "order-1", "status": "FILLED"},
-    ]
-    lifecycle = {"value": RUNNING}
-    shutdown_event = threading.Event()
-
-    unknown = halt(client, lifecycle, shutdown_event)
-
-    assert unknown == 0
+    client = _client([{"id": "order-1", "status": "FILLED"}])
+    unresolved = halt(_manager(client), {"value": RUNNING}, threading.Event())
+    assert unresolved == 0
     client.cancel_order.assert_not_called()
 
 
 def test_halt_is_idempotent():
-    client = MagicMock()
-    lifecycle = {"value": STOPPED}
-    shutdown_event = threading.Event()
-
-    halt(client, lifecycle, shutdown_event)
-
+    client = _client()
+    orders = _manager(client)
+    halt(orders, {"value": STOPPED}, threading.Event())
     client.get_orders.assert_not_called()
 
 
-def test_halt_handles_get_orders_failure():
-    client = MagicMock()
-    client.get_orders.side_effect = Exception("connection refused")
+def test_halt_falls_back_to_local_state_when_enumeration_fails():
+    import requests
+    client = _client()
+    orders = _manager(client)
+    orders.submit_intent("NOVA", "buy", 100, 4250)   # tracked locally as o1
+    client.get_orders.side_effect = requests.ConnectionError("connection refused")
     lifecycle = {"value": RUNNING}
-    shutdown_event = threading.Event()
 
-    unknown = halt(client, lifecycle, shutdown_event)
+    unresolved = halt(orders, lifecycle, threading.Event())
 
-    assert unknown == 1
+    client.cancel_order.assert_called_once_with("o1")
+    assert unresolved == 0
     assert lifecycle["value"] == STOPPED
-    assert shutdown_event.is_set()
+
+
+def test_halt_stops_feed_and_worker():
+    client = _client()
+    feed, worker = MagicMock(), MagicMock()
+    halt(_manager(client), {"value": RUNNING}, threading.Event(), feed=feed, worker=worker)
+    feed.stop.assert_called_once()
+    worker.stop.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
 # Session boundary reset — P0-13
 # ---------------------------------------------------------------------------
 
-def _make_strategies():
+def test_session_boundary_resets_strategies_and_order_state():
+    client = _client()
+    orders = _manager(client)
     cfg = {"lookback_samples": 3, "momentum_threshold": 0.01,
            "trade_quantity": 100, "limit_offset_bps": 5}
-    return {"NOVA": MomentumStrategy("NOVA", cfg)}
-
-
-def test_session_boundary_clears_price_history():
-    """Simulates the on_session handler logic for session ID change."""
-    strategies = _make_strategies()
-    state = {"session_open": False, "session_id": "session-1"}
-
-    strat = strategies["NOVA"]
+    strat = MomentumStrategy("NOVA", cfg)
     for p in (10_000, 10_100, 10_200):
         strat.on_price(p)
-    assert len(strat.prices) == 3
+    orders.submit_intent("NOVA", "buy", 100, 4250)
+    assert orders.has_active("NOVA")
 
-    # Simulate on_session with a new session ID.
-    new_id = "session-2"
-    if new_id and new_id != state["session_id"]:
-        for s in strategies.values():
-            s.prices.clear()
-        state["session_id"] = new_id
+    # What on_session does on an id change.
+    for s in (strat,):
+        s.prices.clear()
+    orders.reset_for_session("w2")
 
     assert len(strat.prices) == 0
-    assert state["session_id"] == "session-2"
-
-
-def test_same_session_id_does_not_clear():
-    strategies = _make_strategies()
-    state = {"session_open": True, "session_id": "session-1"}
-
-    strat = strategies["NOVA"]
-    for p in (10_000, 10_100, 10_200):
-        strat.on_price(p)
-
-    new_id = "session-1"
-    if new_id and new_id != state["session_id"]:
-        for s in strategies.values():
-            s.prices.clear()
-        state["session_id"] = new_id
-
-    assert len(strat.prices) == 3
+    assert not orders.has_active("NOVA")
+    assert orders.status()["active_orders"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -153,56 +162,13 @@ def test_same_session_id_does_not_clear():
 # ---------------------------------------------------------------------------
 
 def test_bootstrap_sets_session_open_when_running():
-    """Simulates the startup bootstrap logic."""
     state = {"session_open": False, "session_id": None}
-
     session_data = {"status": "running", "id": "session-abc"}
-    if session_data is not None:
-        state["session_open"] = session_data.get("status") == "running"
-        state["session_id"] = session_data.get("id")
-
-    assert state["session_open"] is True
-    assert state["session_id"] == "session-abc"
+    state["session_open"] = session_data.get("status") == "running"
+    state["session_id"] = session_data.get("id")
+    assert state == {"session_open": True, "session_id": "session-abc"}
 
 
 def test_bootstrap_stays_closed_when_ended():
-    state = {"session_open": False, "session_id": None}
-
     session_data = {"status": "ended", "id": "session-xyz"}
-    if session_data is not None:
-        state["session_open"] = session_data.get("status") == "running"
-        state["session_id"] = session_data.get("id")
-
-    assert state["session_open"] is False
-
-
-def test_bootstrap_handles_null_session():
-    state = {"session_open": False, "session_id": None}
-
-    session_data = None
-    if session_data is not None:
-        state["session_open"] = session_data.get("status") == "running"
-        state["session_id"] = session_data.get("id")
-
-    assert state["session_open"] is False
-    assert state["session_id"] is None
-
-
-# ---------------------------------------------------------------------------
-# on_price blocks when not RUNNING — P0-11 guard
-# ---------------------------------------------------------------------------
-
-def test_on_price_blocked_during_quiescing():
-    """The on_price handler should short-circuit when lifecycle is not RUNNING."""
-    lifecycle = {"value": QUIESCING}
-    client = MagicMock()
-    submitted = []
-
-    def on_price(payload):
-        if lifecycle["value"] != RUNNING:
-            return
-        submitted.append(payload)
-
-    on_price({"symbol": "NOVA", "last_price": 10_000})
-    assert submitted == []
-    client.submit_limit_order.assert_not_called()
+    assert (session_data.get("status") == "running") is False

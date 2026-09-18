@@ -24,15 +24,28 @@ Vanilla HTML/CSS/JS + jQuery (pre-framework — you may refactor to React).
 - Money is integer cents on the wire, shown as dollars.
 - Kill switch: a `HALT BOT` button in the top bar (one click, no confirmation)
   sends `POST /bot/halt`; the bot blocks new orders, cancels every open order
-  and stops. A pill next to it shows the bot state from `GET /bot/status`
-  (RUNNING / HALTING / HALTED / OFFLINE), polled every 3 s. `server.js`
-  proxies `/bot/*` to the bot's local control port (`BOT_CONTROL_URL`, default
-  `http://127.0.0.1:8092`, matching `control.port` in the bot's `config.yaml`).
+  and stops. `server.js` proxies `/bot/*` to the bot's local control port
+  (`BOT_CONTROL_URL`, default `http://127.0.0.1:8092`, matching `control.port`
+  in the bot's `config.yaml`).
+- Heartbeat health: the pill next to the button reads `GET /bot/status` every
+  3 s. The bot beats every ~5 s and reports the age of its last beat on its own
+  clock; more than 15 s without one shows `BOT DEAD` (red, pulsing) even though
+  the endpoint answered. Feed health (`FEED DEGRADED` / `FEED DEAD`) and an
+  order-rate pause (`BOT PAUSED`) show on the pill; the tooltip carries the
+  detail. No answer at all is `BOT OFFLINE`.
+- Bot order journal: with each status poll the page reads `GET /bot/orders?since=N`
+  and feeds the lifecycle table. That is how REJECTED submits, UNKNOWN
+  (timed-out) submits and their reconciliation appear with exact codes and
+  bot-side timestamps; the exchange's `GET /orders` never lists them. Rows say
+  in their tooltip whether they came from the bot or the exchange. The
+  "Rejected" counter counts them.
+- While the bot reports no resting or unknown orders, a market-wide SSE `trade`
+  event only refreshes the portfolio, not the orders, saving shared-tier reads.
 
 ## What it deliberately lacks
 
-Heartbeat health, the conversational MCP panel, a predictive view, charts,
-order book, alerts, and dark mode — still open.
+The conversational MCP panel, a predictive view, charts, order book, alerts,
+and dark mode — still open.
 
 ## Run
 

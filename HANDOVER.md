@@ -46,17 +46,24 @@ Updated: 18 September 2026 (SGT) — P1 and P3 bug-fix branches merged; dashboar
 
 ---
 
+### Heartbeat, journal and lifecycle hardening (`heartbeat-lifecycle` branch)
+
+| # | Issue | Remediation | What changed |
+|---|-------|-------------|--------------|
+| 1 | No heartbeat; dashboard health was a REST ping | Backlog "true bot health", stakeholder note 7 | `utils/heartbeat.py` beats every 5 s (log + `GET /status` fields `heartbeat_seq`, `heartbeat_age_s`, `feed_state`, `feed_age_s`, …). Dashboard shows `BOT DEAD` after 15 s without a beat. |
+| 2 | Half-open SSE socket only caught by the 30 s read timeout | Plan P1 H2 (feed-stall watchdog) | Heartbeat restarts the stream (`SSEFeed.restart()`, cursor kept) when no event for 20 s; DEGRADED between 10 and 20 s. |
+| 3 | Dashboard could not see REJECTED/UNKNOWN submits or its own fills from the SSE `trade` event | Plan P4 H2 | `OrderManager` journals every submit/fill/cancel/reconciliation; `GET /orders?since=N` serves it; the dashboard feeds its lifecycle table and rejected counter from it. |
+| 4 | `halt()` counted a timed-out cancel as done and did not block intents atomically | P0-11 / P0-14 | `halt()` now calls `orders.block_new_intents()` then `orders.cancel_all()`; UNKNOWN cancels are reported as unresolved and the process exits 1. Feed and worker are stopped too. |
+| 5 | Session boundary left order state and idempotency keys from the old window | P0-13 | `on_session` calls `orders.reset_for_session(new_id)`; startup calls it with the bootstrapped id. |
+| 6 | No order-rate anomaly throttle | BUG-003 | `risk.max_orders_per_minute` (20) / `anomaly_pause_seconds` (60): a burst pauses new intents, reported on `/status` and the dashboard pill. |
+| 7 | Config validation only rejected the placeholder key | Plan P3 H2 | `validate_config()` rejects non-positive sizes/lookbacks, thresholds outside (0,1), unknown strategy types, negative caps, bad ports and heartbeat timings. |
+| 8 | Dead `Bot` class in `main.py` (P2 merge leftover) and tests that only exercised it | hygiene | Removed. The "observation mode / live gate" those tests described never existed in the real run loop; see SPEC. |
+
 ## Remaining known issues
 
-These are **not yet fixed** across either branch:
-
-- Portfolio is read on every processed price event. No longer blocking the SSE reader (P1 fix), but still consumes the shared REST rate-limit allowance. P2 should replace with cached state / order-lifecycle updates.
-- Pending orders are not included in exposure limits (P2 scope — OrderManager).
-- Persistent signals can still create repeated orders (P2 scope — one-active-order policy).
-- 504/timeout reconciliation is not implemented (P2 scope).
-- Failed order submissions can still log a misleading success message (P2 scope — typed exchange errors).
-- Feed replay sends `Last-Event-ID`, but explicit duplicate-event suppression has not been added.
-- Bot heartbeat / feed-age publication is not implemented (Hour 2 feature).
+- No stop-loss, no portfolio-level exposure cap, no announcement handler (S1). Stop-loss and the cap are waiting on the strategy-centric allocator design (see the discussion in the team channel); the announcement handler is LLM work.
+- `origin/main` commit 79e7901 (extra instruments) still contains the duplicate unmanaged submit in `on_price` that 91ac303 removed; keep the deletion when merging.
+- Feed age counts SSE *events* only (sseclient drops `: keep-alive` comments), so a market with no ticks for 20 s triggers one harmless reconnect.
 
 ---
 
@@ -140,5 +147,5 @@ CSV export; HTML escaping of exchange strings; 42 Node unit tests; repo-root
 Run: `cd baseline-dashboard && npm start` (reads the key from `EXCHANGE_API_KEY` or
 `../baseline-bot/.env`), and the MCP server on port 8091 (see the dashboard README).
 
-Open: heartbeat health dot (needs a bot heartbeat), kill switch (needs a bot control
-channel; `halt()` exists), MCP conversational panel, price chart, dark mode.
+Done since: kill switch, heartbeat health pill, bot order journal feeding the lifecycle
+table. Open: MCP conversational panel, price chart, dark mode.

@@ -2,14 +2,18 @@
 
 Discovers instruments, wires momentum (primary) and mean-reversion (secondary)
 to the SSE price feed, gates on session state, and submits limit orders through
-the REST client. Single process, stdout logging.
+the OrderManager. Single process, stdout logging.
+
+Threads:
+    SSE reader  -> bounded EventWorker queue -> trading worker (on_session/on_price)
+    ControlServer   GET /status, GET /orders?since=, POST /halt  (127.0.0.1:8092)
+    Heartbeat       every ~5s: liveness snapshot + feed-stall watchdog
+    main            waits for the shutdown event, then exits 0/1
 """
 import os
 import signal
 import sys
 import threading
-import time
-import uuid
 
 import yaml
 
@@ -22,6 +26,7 @@ from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
 from utils.control import ControlServer
 from utils.event_worker import EventWorker
+from utils.heartbeat import Heartbeat
 from utils.logger import log
 
 
@@ -41,6 +46,73 @@ def load_config():
         raise ValueError("exchange base URL is required")
     if not exchange["api_key"] or exchange["api_key"] == "REPLACE_WITH_TEAM_API_KEY":
         raise ValueError("set EXCHANGE_API_KEY; never commit the team API key")
+    validate_config(config)
+    return config
+
+
+def validate_config(config):
+    """Reject a config that would trade wrongly rather than fail loudly.
+
+    Raises ValueError naming the first bad field. Thresholds must be positive
+    fractions, sizes and lookbacks positive integers, caps non-negative; the
+    control port and heartbeat timings must be sane. Nothing here reads the
+    network.
+    """
+    def positive_int(section, key):
+        v = section.get(key)
+        if not isinstance(v, int) or isinstance(v, bool) or v <= 0:
+            raise ValueError(f"{key} must be a positive integer, got {v!r}")
+
+    def non_negative_int(section, key):
+        v = section.get(key)
+        if not isinstance(v, int) or isinstance(v, bool) or v < 0:
+            raise ValueError(f"{key} must be a non-negative integer, got {v!r}")
+
+    def fraction(section, key):
+        v = section.get(key)
+        if not isinstance(v, (int, float)) or isinstance(v, bool) or not 0 < v < 1:
+            raise ValueError(f"{key} must be a fraction between 0 and 1, got {v!r}")
+
+    active = config.get("instruments", {}).get("active", {})
+    primary, secondary = active.get("primary"), active.get("secondary")
+    if not primary or not secondary or primary == secondary:
+        raise ValueError("instruments.active needs distinct primary and secondary symbols")
+
+    strategies = config.get("strategy", {})
+    for symbol in (primary, secondary):
+        strat = strategies.get(symbol)
+        if not strat:
+            raise ValueError(f"no strategy configured for {symbol}")
+        positive_int(strat, "lookback_samples")
+        positive_int(strat, "trade_quantity")
+        non_negative_int(strat, "limit_offset_bps")
+        if strat.get("type") == "momentum":
+            fraction(strat, "momentum_threshold")
+        elif strat.get("type") == "mean_reversion":
+            fraction(strat, "deviation_threshold")
+        else:
+            raise ValueError(f"unknown strategy type for {symbol}: {strat.get('type')!r}")
+
+    risk = config.get("risk", {})
+    non_negative_int(risk, "max_position_primary")
+    non_negative_int(risk, "max_position_secondary")
+    for key in ("max_active_orders_per_symbol", "max_orders_per_minute"):
+        if key in risk:
+            positive_int(risk, key)
+    if "anomaly_pause_seconds" in risk and not risk["anomaly_pause_seconds"] > 0:
+        raise ValueError("anomaly_pause_seconds must be positive")
+
+    control = config.get("control", {})
+    port = control.get("port", 8092)
+    if not isinstance(port, int) or not 0 <= port <= 65535:
+        raise ValueError(f"control.port must be 0..65535, got {port!r}")
+
+    hb = config.get("heartbeat", {})
+    interval = hb.get("interval_seconds", 5)
+    degraded = hb.get("feed_degraded_after_seconds", 10)
+    stall = hb.get("feed_stall_after_seconds", 20)
+    if not (0 < interval and 0 < degraded < stall):
+        raise ValueError("heartbeat: need 0 < interval and 0 < degraded < stall")
     return config
 
 
@@ -61,133 +133,52 @@ QUIESCING = "QUIESCING"
 STOPPED = "STOPPED"
 
 
-def halt(client, lifecycle, shutdown_event):
-    """Block new order intents and cancel all open orders.
+def halt(orders, lifecycle, shutdown_event, feed=None, worker=None):
+    """Emergency stop: block new intents, cancel every open order, stop.
 
-    Reusable by signal handlers and a future kill-switch command.
+    Shared by SIGINT/SIGTERM and the dashboard kill switch (POST /halt).
+    Ordering matters: intents are blocked atomically inside OrderManager
+    *before* any cancel is sent, so the trading worker cannot slip a fresh
+    order into a book we are clearing. Cancels go through
+    OrderManager.cancel_all(), which enumerates from the exchange as well as
+    local state, treats already-filled / already-cancelled as settled, and
+    reports what it could not confirm. Returns that unresolved count; the
+    process exits non-zero when it is non-zero.
     """
     if lifecycle["value"] == STOPPED:
-        return
+        return 0
 
     lifecycle["value"] = QUIESCING
     log("lifecycle: QUIESCING — blocking new intents")
+    orders.block_new_intents()
 
-    unknown = 0
     try:
-        orders = client.get_orders()
-        open_orders = [
-            o for o in orders
-            if o.get("status") in ("OPEN", "PARTIALLY_FILLED")
-        ]
-        if not open_orders:
-            log("no open orders to cancel")
-        for order in open_orders:
-            oid = order["id"]
-            try:
-                client.cancel_order(oid)
-                log(f"cancelled order {oid}")
-            except Exception as exc:
-                log(f"cancel {oid} failed (may already be filled/cancelled): {exc}")
-                unknown += 1
-    except Exception as exc:
-        log(f"failed to fetch orders for cancellation: {exc}")
-        unknown += 1
+        cancelled, unresolved = orders.cancel_all()
+    except Exception as exc:  # cancel_all degrades, but never trust the halt path
+        log(f"lifecycle: cancel_all failed: {exc}")
+        cancelled, unresolved = [], ["<cancel_all failed>"]
+
+    if feed is not None:
+        try:
+            feed.stop()
+        except Exception as exc:
+            log(f"lifecycle: feed stop failed: {exc}")
+    if worker is not None:
+        try:
+            worker.stop()
+        except Exception as exc:
+            log(f"lifecycle: worker stop failed: {exc}")
 
     lifecycle["value"] = STOPPED
+    lifecycle["unresolved"] = len(unresolved)
     shutdown_event.set()
 
-    if unknown:
-        log(f"lifecycle: STOPPED — {unknown} order(s) unresolved")
+    if unresolved:
+        log(f"lifecycle: STOPPED — cancelled {len(cancelled)}, "
+            f"{len(unresolved)} order(s) unresolved: {unresolved}")
     else:
-        log("lifecycle: STOPPED — all orders resolved")
-    return unknown
-
-
-class Bot:
-    def __init__(self, client, config, trade=False):
-        self.client = client
-        self.config = config
-        self.trade = trade
-        self.session_id = None
-        self.unknown_key = None
-        self.stopping = threading.Event()
-
-        primary = config["instruments"]["active"]["primary"]
-        secondary = config["instruments"]["active"]["secondary"]
-        self.strategies = {
-            primary: build_strategy(primary, config["strategy"][primary]),
-            secondary: build_strategy(secondary, config["strategy"][secondary]),
-        }
-        self.risk = RiskLimits(
-            config["risk"]["max_position_primary"],
-            config["risk"]["max_position_secondary"],
-            primary, secondary,
-        )
-
-    def evaluate(self, strategy):
-        session = self.client.get_session()
-        new_id = session.get("id")
-        if new_id and new_id != self.session_id:
-            for s in self.strategies.values():
-                s.prices.clear()
-            self.session_id = new_id
-
-        if session.get("mode") == "live":
-            return
-        if not self.trade:
-            return
-
-        orders = self.client.get_orders()
-
-        if self.unknown_key:
-            if any(o.get("idempotency_key") == self.unknown_key for o in orders):
-                self.unknown_key = None
-            else:
-                return
-
-        if any(
-            o.get("symbol") == strategy.symbol
-            and o.get("status") in ("OPEN", "PARTIALLY_FILLED")
-            for o in orders
-        ):
-            return
-
-        position = self.client.get_positions(strategy.symbol)
-        signal = strategy.signal(position)
-        if signal is None:
-            return
-
-        if signal.side == "buy" and not self.risk.allows_buy(
-            strategy.symbol, position, signal.quantity
-        ):
-            return
-
-        key = str(uuid.uuid4())
-        try:
-            self.client.submit_limit_order(
-                strategy.symbol, signal.side, signal.quantity, signal.limit_price, key,
-            )
-        except Exception:
-            self.unknown_key = key
-            raise
-
-    def shutdown(self):
-        orders = self.client.get_orders()
-        for order in orders:
-            if order.get("status") in ("OPEN", "PARTIALLY_FILLED"):
-                self.client.cancel_order(order["id"])
-        time.sleep(1)
-        self.client.get_orders()
-        self.stopping.set()
-        return True
-
-    def on_price(self, payload):
-        symbol = payload.get("symbol")
-        strategy = self.strategies.get(symbol)
-        if strategy is None:
-            return
-        strategy.on_price(payload["last_price"])
-        self.evaluate(strategy)
+        log(f"lifecycle: STOPPED — cancelled {len(cancelled)}, all orders resolved")
+    return len(unresolved)
 
 
 def main():
@@ -212,24 +203,28 @@ def main():
 
     limits = config.get("rate_limits", {})
     window = float(limits.get("window_seconds", 30))
+    risk_cfg = config["risk"]
     orders = OrderManager(
         client, risk,
-        max_active_per_symbol=config["risk"].get("max_active_orders_per_symbol", 1),
+        max_active_per_symbol=risk_cfg.get("max_active_orders_per_symbol", 1),
         order_limiter=RollingWindow(limits.get("orders_per_window", 100), window),
         shared_limiter=RollingWindow(limits.get("shared_per_window", 300), window,
                                      reserve=limits.get("shared_reserve", 40)),
+        anomaly_limiter=RollingWindow(risk_cfg.get("max_orders_per_minute", 20), 60.0),
+        anomaly_pause_seconds=risk_cfg.get("anomaly_pause_seconds", 60),
     )
 
-    # Report starting positions.
+    # Report starting positions from one portfolio read.
+    portfolio = client.get_portfolio()
     for sym in strategies:
-        log(f"{sym} starting position: {client.get_positions(sym)}")
+        log(f"{sym} starting position: {client.position_detail(sym, portfolio)['quantity']}")
 
     # --- shared state -------------------------------------------------------
     state = {
         "session_open": False,
         "session_id": None,
     }
-    lifecycle = {"value": RUNNING}
+    lifecycle = {"value": RUNNING, "unresolved": 0}
     shutdown_event = threading.Event()
 
     # --- P0-12: session bootstrap -------------------------------------------
@@ -244,6 +239,7 @@ def main():
             log("session bootstrap: no active session yet")
     except Exception as exc:
         log(f"session bootstrap failed (will rely on SSE): {exc}")
+    orders.reset_for_session(state["session_id"])
 
     # --- event handlers -----------------------------------------------------
 
@@ -254,13 +250,18 @@ def main():
         state["session_open"] = new_status == "open"
         log(f"session: {new_status}")
 
-        # P0-13: detect session boundary — clear stale state on ID change.
+        # P0-13: a new trading window is a clean slate on the exchange (cash,
+        # positions, orders and idempotency keys all restart), so every piece
+        # of per-window state here restarts with it: strategy price history
+        # and the OrderManager's resting/unknown orders, positions and keys.
         new_id = payload.get("id")
         if new_id and new_id != state["session_id"]:
-            log(f"session boundary: {state['session_id']} -> {new_id} — resetting strategies")
+            log(f"session boundary: {state['session_id']} -> {new_id} — resetting "
+                f"strategies and order state")
             for strat in strategies.values():
                 strat.prices.clear()
             state["session_id"] = new_id
+            orders.reset_for_session(new_id)
 
     def on_price(payload):
         if lifecycle["value"] != RUNNING:
@@ -273,10 +274,8 @@ def main():
         strat.on_price(payload["last_price"])
         if not state["session_open"]:
             return
-        # NOTE(P1): this still runs inside the SSE listener thread. Once the
-        # bounded event queue lands, everything below moves to the trading
-        # worker — OrderManager is thread-safe and does not care which thread
-        # calls it, but the REST calls must not block feed ingestion.
+        # Runs on the trading worker thread, never on the SSE reader: REST
+        # calls here cannot block feed ingestion.
         orders.poll()
         # The strategies take one `position` argument, used only to decide
         # whether they may sell and how much. Pass what is actually sellable —
@@ -287,65 +286,79 @@ def main():
         signal = strat.signal(orders.available_to_sell(symbol))
         if signal is None:
             return
-        # Refusals, rejections and unknowns are all logged by OrderManager.
-        # Nothing is reported as submitted unless the exchange acknowledged it.
+        # Refusals, rejections and unknowns are all logged and journalled by
+        # OrderManager. Nothing is reported as submitted unless the exchange
+        # acknowledged it.
         orders.submit_intent(symbol, signal.side, signal.quantity, signal.limit_price)
+
+    # --- feed, worker, heartbeat ---------------------------------------------
+    feed = SSEFeed(config["exchange"]["base_url"], config["exchange"]["api_key"])
+    worker = EventWorker({"session": on_session, "price": on_price})
+    hb_cfg = config.get("heartbeat", {})
+    heartbeat = Heartbeat(
+        feed, worker=worker, lifecycle=lifecycle, orders=orders,
+        interval=hb_cfg.get("interval_seconds", 5),
+        degraded_after=hb_cfg.get("feed_degraded_after_seconds", 10),
+        stall_after=hb_cfg.get("feed_stall_after_seconds", 20),
+    )
+
+    def do_halt():
+        return halt(orders, lifecycle, shutdown_event, feed=feed, worker=worker)
 
     # --- signal handlers (P0-11, P0-14) -------------------------------------
 
     def _shutdown_handler(signum, frame):
         sig_name = signal.Signals(signum).name
         log(f"received {sig_name} — initiating shutdown")
-        halt(client, lifecycle, shutdown_event)
+        do_halt()
 
     signal.signal(signal.SIGINT, _shutdown_handler)
     signal.signal(signal.SIGTERM, _shutdown_handler)
 
-    # --- control endpoint (kill switch, P0-14) ------------------------------
-    # The dashboard's HALT button POSTs /halt here through its local proxy.
+    # --- control endpoint (kill switch + health, P0-14) ---------------------
+    # The dashboard's HALT button POSTs /halt here through its local proxy; its
+    # bot pill and order lifecycle table read /status and /orders?since=.
     control_cfg = config.get("control", {})
 
     def control_status():
-        return {
+        snapshot = {
             "state": lifecycle["value"],
             "session_id": state["session_id"],
             "session_open": state["session_open"],
+            "unresolved": lifecycle.get("unresolved", 0),
+            "orders": orders.status(),
         }
+        snapshot.update(heartbeat.snapshot())
+        return snapshot
 
     control = ControlServer(
         control_status,
-        lambda: halt(client, lifecycle, shutdown_event),
+        do_halt,
         host=control_cfg.get("host", "127.0.0.1"),
         port=int(os.environ.get("BOT_CONTROL_PORT") or control_cfg.get("port", 8092)),
+        events_fn=orders.journal_page,
     )
     control.start()
 
-    # --- start feed ---------------------------------------------------------
-    feed = SSEFeed(config["exchange"]["base_url"], config["exchange"]["api_key"])
-    worker = EventWorker({"session": on_session, "price": on_price})
+    # --- start ------------------------------------------------------------
     worker.start()
     feed.on("session", lambda payload: worker.submit("session", payload))
     feed.on("price", lambda payload: worker.submit("price", payload))
     feed.start()
+    heartbeat.start()
     log("bot started")
 
-    # Keep the process alive. NOTE(P3): there is still no graceful shutdown or
-    # session bootstrap here — `session_open` starts False and only moves on an
-    # SSE event, so a bot started mid-window never trades. OrderManager now
-    # provides what the lifecycle work needs:
-    #   orders.block_new_intents()      -- atomic, call before cancelling
-    #   orders.cancel_all()             -- (cancelled, unresolved); exit nonzero
-    #                                      if `unresolved` is non-empty
-    #   orders.reset_for_session(id)    -- drop per-window state at a boundary
-    #   orders.last_seen_session_id     -- read from GET /portfolio, no extra call
     # Wait for the shutdown signal (Ctrl-C, SIGTERM or the dashboard kill
     # switch). A bare `while True: sleep` here would never let halt() end the
     # process. Polling keeps the main thread responsive to signals on every OS.
     while not shutdown_event.wait(1):
         pass
+    heartbeat.stop()
+    feed.join(5)
+    worker.join(5)
     control.stop()
 
-    exit_code = 0 if lifecycle["value"] == STOPPED else 1
+    exit_code = 0 if lifecycle["value"] == STOPPED and not lifecycle.get("unresolved") else 1
     sys.exit(exit_code)
 
 
