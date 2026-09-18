@@ -86,8 +86,8 @@ def test_follower_can_still_sell_on_a_wide_book(config):
         axon.on_price(20_000)
     nova.on_price(10_500)
     axon.on_price(20_000)
-    for _ in range(axon.arm_samples + 1):                 # then rolls over
-        nova.on_price(10_300)
+    nova.on_price(10_300)                                   # leader off the high
+    for _ in range(axon.arm_samples + 1):                   # age the arm
         axon.on_price(20_000)
     signal = axon.signal(200)
     assert signal is not None and signal.side == "sell"
@@ -145,4 +145,4 @@ def test_group_cap_cannot_block_the_sell_that_unwinds_a_breach(config):
 
     cap = risk.max_group_notional(risk.group_for("NOVA"))
     assert manager.projected_notional(["NOVA", "AXON"]) > cap   # in breach
-    assert manager.submit_intent("AXON", "sell", 500, 20_000) is not None
+    assert manager.submit_intent("AXON", "sell", qty, mark) is not None
