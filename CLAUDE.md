@@ -30,3 +30,20 @@ burst throttle in the order manager, the control routes, the dashboard view and
 history changes and their tests. Bot and dashboard unit suites pass; a bot smoke run
 against the sandbox exchange exercised `/status`, `/orders` and `/halt`. Human review
 of the halt ordering and the watchdog thresholds remains required.
+
+## Instrument risk model
+
+Implemented with Claude Code (Fable 5.1) from the stakeholder records (Priya's stops,
+drawdown and DRFT sizing; Clarissa's and Farrukh's correlation concern; Adeline's
+regime request), James's notes (pages 1 to 4), the opening brief's instrument table,
+the exchange API reference (portfolio fields, `book_update`, rate tiers) and the
+existing bot code. AI wrote `docs/risk-model-design.md` first, then the modules and
+tests test-first (`risk/stats.py`, `risk/profiles.py`, `risk/model.py`,
+`risk/exits.py`, the OrderManager hooks, config validation), and calibrated the
+defaults from two read-only samples of the sandbox feed (per-tick and 10-second-bar
+volatility, spreads, depth) that are recorded in the design doc. Bot unit suite:
+219 tests pass; lint clean. A read-only smoke run built the model from the shipped
+config against the live sandbox feed and portfolio. No orders were placed by AI during
+this work and no organizer LLM credits were used. Human review required: the stop
+floors and regime bands, the drawdown action (`block_buys` chosen over `halt`), and
+whether granted starting positions should be subject to the cost-basis stop.

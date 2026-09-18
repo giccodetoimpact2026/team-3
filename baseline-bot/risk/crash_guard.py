@@ -19,33 +19,8 @@ Prices are integer cents throughout.
 import threading
 import time
 
+from risk.exits import Flattener, sweep_price  # noqa: F401 (re-export)
 from utils.logger import log
-
-
-def sweep_price(bids, quantity: int, floor: int) -> int:
-    """Lowest bid level needed to absorb `quantity`, clamped to `floor`.
-
-    `bids` is the exchange's book shape: one entry per resting order, highest
-    price first. Malformed entries are skipped. An empty or too-thin book
-    returns the lowest usable level, or the floor when there is none.
-    """
-    remaining = int(quantity)
-    level = None
-    for entry in bids or []:
-        try:
-            price = int(entry["price"])
-            qty = int(entry["quantity"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        if price <= 0 or qty <= 0:
-            continue
-        level = price
-        remaining -= qty
-        if remaining <= 0:
-            break
-    if level is None:
-        return int(floor)
-    return max(level, int(floor))
 
 
 class CrashGuard:
@@ -135,7 +110,7 @@ class CrashGuard:
 
 
 class CrashResponder:
-    """Wires the guard to the book and to OrderManager.flatten().
+    """Wires the guard to the shared exit path (risk/exits.py).
 
     On a trigger: read the book snapshot, price the sweep, flatten. If the dump
     order is still resting `reprice_after` seconds later, chase it once with a
@@ -144,45 +119,20 @@ class CrashResponder:
 
     def __init__(self, guard, client, orders, reprice_after=5.0, clock=None):
         self.guard = guard
-        self._client = client
-        self._orders = orders
-        self._reprice_after = float(reprice_after)
-        self._clock = clock or guard._clock
-        self._dumps = {}   # symbol -> {"at": t, "order_id": id, "repriced": bool}
+        self._flattener = Flattener(client, orders, floor_pct=guard.floor_pct,
+                                    reprice_after=reprice_after,
+                                    clock=clock or guard._clock, label="crash guard")
 
     def allows_strategy(self, symbol: str) -> bool:
         return not self.guard.in_cooldown(symbol)
 
     def on_price(self, symbol: str, price: int) -> None:
         if self.guard.on_price(symbol, price):
-            self._dump(symbol, int(price))
-            return
-        dump = self._dumps.get(symbol)
-        if dump and not dump["repriced"] and dump["order_id"] \
-                and self._clock() - dump["at"] >= self._reprice_after \
-                and self._orders.has_active(symbol):
-            log(f"crash guard: {symbol} dump order still resting — repricing once")
-            dump["repriced"] = True
-            self._dump(symbol, int(price), repriced=True)
-
-    def _dump(self, symbol: str, price: int, repriced: bool = False) -> None:
-        floor = self.guard.floor_for(price)
-        try:
-            book = self._client.get_orderbook(symbol) or {}
-            bids = book.get("bids") or []
-        except Exception as exc:
-            log(f"crash guard: {symbol} book read failed ({exc}); selling at floor {floor}")
-            bids = []
-
-        def pricer(quantity: int) -> int:
-            return sweep_price(bids, quantity, floor)
-
-        result = self._orders.flatten(symbol, pricer)
-        order_id = getattr(result, "order_id", None) if result is not None else None
-        status = getattr(result, "status", None) if result is not None else "NOT_SENT"
-        log(f"crash guard: {symbol} dump {'reprice ' if repriced else ''}-> {status}")
-        self._dumps[symbol] = {"at": self._clock(), "order_id": order_id,
-                               "repriced": repriced}
+            self._flattener.flatten(symbol, int(price))
+        else:
+            self._flattener.on_price(symbol, int(price))
 
     def status(self) -> dict:
-        return self.guard.status()
+        out = self.guard.status()
+        out["exits"] = self._flattener.status()
+        return out

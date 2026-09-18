@@ -514,3 +514,60 @@ def test_keys_differ_across_bot_restarts_in_the_same_session(client, clock):
     first = OrderManager(client, risk, session_id="w1", clock=clock)
     second = OrderManager(client, risk, session_id="w1", clock=clock)
     assert first._next_key("NOVA", "buy") != second._next_key("NOVA", "buy")
+
+
+# --- risk policy hooks: sizing and portfolio observation ---------------------
+
+class SizingPolicy(RiskLimits):
+    """A RiskLimits that also sizes: what the risk model plugs in as."""
+
+    def __init__(self, adjusted, reason=None):
+        super().__init__(10_000, 10_000, "NOVA", "ELXR")
+        self.adjusted, self.reason = adjusted, reason
+        self.seen, self.portfolios = [], []
+
+    def adjust_intent(self, symbol, side, quantity, price, projected_position, source=None):
+        self.seen.append((symbol, side, quantity, price, projected_position, source))
+        return self.adjusted, self.reason
+
+    def on_portfolio(self, portfolio):
+        self.portfolios.append(portfolio)
+
+
+def test_risk_limits_passes_intents_through_unchanged():
+    risk = RiskLimits(500, 200, "NOVA", "ELXR")
+    assert risk.adjust_intent("NOVA", "buy", 100, 4250, 0) == (100, None)
+    risk.on_portfolio({"positions": []})      # no-op, must not raise
+
+
+def test_intent_quantity_is_adjusted_by_the_risk_policy(client, clock):
+    policy = SizingPolicy(50, "vol_cap=50")
+    manager = OrderManager(client, policy, session_id="w1", clock=clock)
+    manager.submit_intent("NOVA", "buy", 100, 4250, source="momentum")
+    sym, side, qty, price, _key = client.submit_limit_order.call_args.args
+    assert (sym, side, qty, price) == ("NOVA", "buy", 50, 4250)
+    assert policy.seen == [("NOVA", "buy", 100, 4250, 0, "momentum")]
+
+
+def test_intent_refused_by_the_risk_policy_is_not_sent(client, clock):
+    policy = SizingPolicy(0, "drawdown limit: buys blocked")
+    manager = OrderManager(client, policy, session_id="w1", clock=clock)
+    assert manager.submit_intent("NOVA", "buy", 100, 4250) is None
+    client.submit_limit_order.assert_not_called()
+    assert not manager.has_active("NOVA")
+
+
+def test_portfolio_refresh_feeds_the_risk_policy(client, clock):
+    policy = SizingPolicy(100)
+    manager = OrderManager(client, policy, session_id="w1", clock=clock)
+    manager.refresh_positions(force=True)
+    assert policy.portfolios == [client.get_portfolio.return_value]
+
+
+def test_flatten_is_not_resized_by_the_policy(client, clock):
+    policy = SizingPolicy(0, "drawdown limit: buys blocked")
+    manager = OrderManager(client, policy, session_id="w1", clock=clock)
+    _hold(client, "NOVA", 1000)
+    client.submit_limit_order.return_value = SubmitResult(
+        Outcome.ACKNOWLEDGED, "k", order_id="d1", status="FILLED", filled_qty=1000)
+    assert manager.flatten("NOVA", lambda qty: 4000) is not None

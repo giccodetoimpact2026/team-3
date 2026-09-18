@@ -59,9 +59,24 @@ Updated: 18 September 2026 (SGT) — P1 and P3 bug-fix branches merged; dashboar
 | 7 | Config validation only rejected the placeholder key | Plan P3 H2 | `validate_config()` rejects non-positive sizes/lookbacks, thresholds outside (0,1), unknown strategy types, negative caps, bad ports and heartbeat timings. |
 | 8 | Dead `Bot` class in `main.py` (P2 merge leftover) and tests that only exercised it | hygiene | Removed. The "observation mode / live gate" those tests described never existed in the real run loop; see SPEC. |
 
+### Instrument risk model (working tree, 18 September)
+
+| # | Issue | Remediation | What changed |
+|---|-------|-------------|--------------|
+| 1 | No per-position stop-loss | BUG-009, Priya | `risk/model.py`: stop level = cost basis minus clamp(4 × ATR, min, max pct) per instrument profile; `confirm_ticks` breaches; sells into the bids through `risk/exits.py` (shared with the crash guard); cooldown blocks re-entry. |
+| 2 | No portfolio-level exposure cap | BUG-008, Clarissa, Farrukh | Gross cap (90% of equity), per-symbol notional cap (35%), NOVA+AXON group cap (45%); measured 5-minute return correlation reported and alerted above 0.7. |
+| 3 | Fixed trade size | BUG-014, James p.4, Priya (DRFT a fifth) | `adjust_intent` in `OrderManager.submit_intent`: quantity × profile `size_multiplier` × regime factor, capped by risk budget / stop distance, by a fraction of visible ask depth (`book_update` now consumed), and by the exposure caps. Sells untouched. |
+| 4 | No drawdown alert | Priya | Baseline equity at the first portfolio read of the window; 10% alert, 15% alert plus `DEFENSIVE` mode (buys blocked; `alert_only` and `halt` available). |
+| 5 | No regime detection | James p.3, Adeline | `risk/stats.py`: 10 s bars, true range, ATR(14), per-instrument thresholds with 3-bar hysteresis; momentum suspended in LOW, halved in NEUTRAL via `regime_factors`. |
+| 6 | Risk parameters not visible | Priya | `GET /status` → `risk` (mode, drawdown, exposure, per-instrument regime/ATR/stop/loss/pause/last decision, alerts, share caps). |
+
+Files: `risk/stats.py`, `risk/profiles.py`, `risk/model.py`, `risk/exits.py` (new); `risk/crash_guard.py` (uses the shared exit), `risk/limits.py` (no-op sizing hooks), `orders/manager.py` (`on_portfolio`, `adjust_intent`, `source`), `strategies/dca.py` (`source="dca"`), `exchange/client.py` (`realized_pnl` parsed), `main.py` (validation, wiring, `book_update`), `config.yaml` (`risk_model`), tests `test_market_stats.py`, `test_risk_model.py`, `test_exits.py` plus additions to `test_orders.py` and `test_config.py`. Design and calibration: `docs/risk-model-design.md`.
+
 ## Remaining known issues
 
-- No stop-loss, no portfolio-level exposure cap, no announcement handler (S1). Stop-loss and the cap are waiting on the strategy-centric allocator design (see the discussion in the team channel); the announcement handler is LLM work.
+- No announcement handler (S1); LLM work. No manual per-instrument pause/resume route (the model exposes `pause`/`resume`). No strategy switching by regime (the model exposes `regime(symbol)`).
+- The strategies' 5 bps limit offset does not cross the 70 to 125 bps spreads seen on AXON, ELXR and DRFT in the sandbox, so those orders rest; the model exposes `best_bid`/`best_ask` for a spread-aware offset.
+- Risk thresholds (stop floors 4 to 6%, regime bands, caps) are sandbox-calibrated starting points and need a human decision before a live window; `stop_loss.enabled: false` keeps sizing and caps without cost-basis stops.
 - `origin/main` commit 79e7901 (extra instruments) still contains the duplicate unmanaged submit in `on_price` that 91ac303 removed; keep the deletion when merging.
 - Feed age counts SSE *events* only (sseclient drops `: keep-alive` comments), so a market with no ticks for 20 s triggers one harmless reconnect.
 

@@ -47,7 +47,71 @@ risk:
   # GET /status. Resting orders are left alone.
   max_orders_per_minute: 20
   anomaly_pause_seconds: 60
-  # No portfolio-level cap and no stop-loss yet — pending the allocator design.
+  # Stop-losses, the portfolio cap and behaviour-based sizing live under
+  # `risk_model` below.
+
+risk_model:
+  # Instrument risk model (docs/risk-model-design.md). Sizes buys by each
+  # instrument's personality, volatility regime and visible liquidity; cuts a
+  # position that falls a volatility-scaled distance below its cost; blocks
+  # buys at 15% portfolio drawdown; caps correlated and gross exposure. Sells
+  # are never reduced. Everything below is a starting point to tune on the
+  # sandbox; the calibration sample is recorded in the design doc.
+  enabled: true
+  size_mode: cap                 # cap: strategy quantity is the ceiling; target: the risk budget sets the size
+  bucket_seconds: 10             # ticks are bucketed into 10 s bars before ATR (feed timing is irregular)
+  atr_buckets: 14                # James p.3, M ~ 14
+  regime_confirm_buckets: 3      # hysteresis: 3 bars (30 s) agree before a regime switch
+  correlation_buckets: 30        # rolling 5-minute return correlation, display and alert only
+  correlation_min_samples: 20
+  correlation_alert: 0.7
+  risk_per_trade_pct: 0.005      # equity at risk per buy if its stop fills (vol cap)
+  max_notional_per_symbol_pct: 0.35
+  max_gross_exposure_pct: 0.90
+  instrument_loss_limit_pct: 0.02   # per-symbol session loss that pauses its buys
+  drawdown:
+    warn_pct: 0.10               # alert
+    limit_pct: 0.15              # Priya: 15% of starting capital
+    action: block_buys           # alert_only | block_buys | halt
+  stop_loss:
+    enabled: true                # set false to keep sizing/caps but no cost-basis stops
+  exit:
+    floor_pct: 0.03              # a stop sells into the bids, never below 3% under the trigger
+    reprice_after_seconds: 5
+  regime_factors:                # size factor by strategy type and regime (James p.3)
+    momentum:       {LOW: 0.0, NEUTRAL: 0.5, HIGH: 1.0}
+    mean_reversion: {LOW: 1.0, NEUTRAL: 0.75, HIGH: 0.5}
+    dca:            {LOW: 1.0, NEUTRAL: 1.0, HIGH: 0.5}
+  groups:
+    # Freight follows energy costs (brief, Derek, James p.4): long both is one
+    # position, so the pair shares a cap (Clarissa, Farrukh, BUG-008).
+    energy_freight: {members: [NOVA, AXON], max_exposure_pct: 0.45}
+  default_profile:               # any instrument discovered without a profile
+    personality: unknown
+    size_multiplier: 0.5
+    liquidity: liquid
+    depth_fraction: 0.5          # max share of the visible top-5 ask depth per buy
+    max_qty_without_book: 1000   # ceiling before the first book_update arrives
+    low_vol: 0.004               # 10 s ATR% below -> LOW (momentum off)
+    high_vol: 0.010              # above -> HIGH (full size); sandbox liquid names run ~0.8-1.0%
+    stop_atr_mult: 4.0           # stop distance = 4 x ATR ...
+    min_stop_pct: 0.05           # ... but never tighter than 5% of cost (sandbox swings 3-5% per 2 min)
+    max_stop_pct: 0.12           # ... nor wider than 12%; the crash guard sits at 15%
+    confirm_ticks: 3
+    cooldown_seconds: 120
+  profiles:
+    NOVA: {personality: trending, size_multiplier: 1.0}
+    AXON: {personality: follower, size_multiplier: 0.75, max_stop_pct: 0.10}
+    CRVX: {personality: growth_momentum, size_multiplier: 0.75}
+    # Thin book: a fifth of NOVA (Priya), a fifth of the visible asks, wider
+    # regime bands because a thin name looks volatile per sample (James p.3).
+    DRFT: {personality: thin_event, size_multiplier: 0.2, liquidity: thin,
+           depth_fraction: 0.2, max_qty_without_book: 20,
+           low_vol: 0.006, high_vol: 0.015, min_stop_pct: 0.06, max_stop_pct: 0.15}
+    # Range-bound: lowest volatility on the sandbox (10 s ATR ~0.5%), so its
+    # own bands and the tightest stop floor.
+    ELXR: {personality: range_bound, size_multiplier: 1.0,
+           low_vol: 0.003, high_vol: 0.007, min_stop_pct: 0.04, max_stop_pct: 0.10}
 
 rate_limits:
   # Exchange tiers, per team, rolling window (exchange-api-reference §Rate limits).

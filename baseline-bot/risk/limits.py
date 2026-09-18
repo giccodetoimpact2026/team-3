@@ -26,6 +26,11 @@ class RiskLimits:
     def max_position(self, symbol: str) -> int:
         return self._max.get(symbol, self._default)
 
+    def snapshot(self, symbols) -> dict:
+        """Risk parameters for GET /status, so the dashboard's Risk view can show
+        the cap each discovered instrument is held to."""
+        return {"max_position": {s: self.max_position(s) for s in symbols}}
+
     def allows_buy(self, symbol: str, projected_position: int, quantity: int) -> bool:
         """True if buying `quantity` keeps the projected long within the cap.
 
@@ -46,3 +51,14 @@ class RiskLimits:
         if quantity <= 0:
             return False
         return quantity <= available
+
+    # --- sizing hooks (the risk model overrides these; see risk/model.py) ---
+
+    def adjust_intent(self, symbol: str, side: str, quantity: int, price: int,
+                      projected_position: int, source=None):
+        """(quantity, reason): the plain limits never resize an intent."""
+        return quantity, None
+
+    def on_portfolio(self, portfolio) -> None:
+        """Called by OrderManager on every portfolio refresh. No-op here."""
+        return None

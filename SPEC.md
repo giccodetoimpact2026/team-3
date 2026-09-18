@@ -55,11 +55,30 @@ are fed from the bot's order journal as well as `GET /orders`, so REJECTED and U
 submits appear with their codes and bot-side SGT timestamps. A market-wide `trade`
 event no longer triggers an orders re-read while the bot reports nothing resting.
 
-Deferred from this increment: ATR routing, stop-losses, portfolio caps (waiting on the
-strategy-centric allocator design) and the AI/MCP conversational panel. These are
-unfinished, not removed from the overall hackathon scope. DRFT remains off here;
-`origin/main` enables it with the other instruments. Emergency halt is immediate;
-parameter changes need two-step confirmation.
+Instrument risk model (`docs/risk-model-design.md`, `baseline-bot/risk/`): the bot
+sizes, stops and caps by instrument behaviour using only data it already receives.
+Requirements read as genuine and implemented: Priya's per-instrument stop-losses
+(volatility-scaled from cost basis, visible on `GET /status`, action is one sell into
+the bids), her 15% drawdown alert (baseline is equity at the first portfolio read of
+the window; 10% alerts, 15% alerts and blocks new buys while sells and stops continue),
+her single-instrument loss alert (2% of starting equity pauses that symbol's buys),
+DRFT at a fifth of NOVA's size and a fifth of visible ask depth (Priya, Derek, the
+00:11 alignment; the junior note's "normal size" is rejected as contradicted by
+Derek's own interview), Clarissa's and Farrukh's correlated-exposure concern
+(NOVA+AXON group cap, gross cap, measured correlation shown and alerted), BUG-014
+sizing by volatility and liquidity, and James's page-3 ATR regime with hysteresis
+(momentum off in LOW, half size in NEUTRAL), computed on 10-second bars because feed
+timing is irregular (brief §8 question 3). Thresholds were calibrated on a sandbox
+sample recorded in the design doc and remain configuration. Sharpe and information
+ratio are deferred as reporting without a defined convention. Regime-based strategy
+switching (swapping instances) is not built; the model provides the regime and the size
+factor for it.
+
+Deferred from this increment: strategy routing by regime, a manual per-instrument
+pause route, spread-aware limit pricing and the AI/MCP conversational panel. These are
+unfinished, not removed from the overall hackathon scope. DRFT trades only through the
+DCA overlay at the reduced size above. Emergency halt is immediate; parameter changes
+need two-step confirmation.
 
 Architecture: Python strategy instances consume public exchange SSE; authenticated REST
 reads gate limit-only, integer-cent, long-only orders. The dashboard is a separate

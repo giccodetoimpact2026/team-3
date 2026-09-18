@@ -54,7 +54,7 @@ class DcaOverlay:
             self._next_try[symbol] = now + self._interval
             return
         limit = price + price * self._offset_bps // 10_000
-        result = self._orders.submit_intent(symbol, "buy", quantity, limit)
+        result = self._orders.submit_intent(symbol, "buy", quantity, limit, source="dca")
         if result is not None and result.acknowledged:
             self._last_buy[symbol] = now
             self._next_try[symbol] = now + self._interval

@@ -365,6 +365,12 @@ class OrderManager:
             self._reserved_cash = int((portfolio or {}).get("reserved_cash") or 0)
             self._positions_at = self._clock()
             self.last_seen_session_id = (portfolio or {}).get("session_id")
+        # The risk policy marks equity, cost basis and per-symbol P&L off the
+        # same read, so the model never spends a shared-tier slot of its own.
+        try:
+            self._risk.on_portfolio(portfolio)
+        except Exception as exc:  # a risk bookkeeping fault must not stop trading
+            log(f"orders: risk policy rejected the portfolio snapshot ({exc})")
 
     def poll(self, force: bool = False) -> None:
         """One pass of order-state maintenance. Safe to call on every tick.
@@ -479,11 +485,13 @@ class OrderManager:
     # --- writes ----------------------------------------------------------
 
     def submit_intent(self, symbol: str, side: str, quantity: int,
-                      price: int) -> SubmitResult | None:
+                      price: int, source=None) -> SubmitResult | None:
         """Gate an intent and submit it. None means refused locally, nothing sent.
 
         Gates run cheapest-and-most-blocking first so a refused intent never
-        spends a rate-limit slot or a portfolio read.
+        spends a rate-limit slot or a portfolio read. `source` names the
+        strategy type (momentum, mean_reversion, dca) for the risk policy's
+        regime factors; the policy may shrink a buy or refuse it outright.
         """
         with self._lock:
             if self._blocked:
@@ -508,6 +516,10 @@ class OrderManager:
             if self._blocked or self._symbol_unresolved(symbol):
                 return None
             if len(self._active_ids(symbol)) >= self._max_active:
+                return None
+            quantity, _reason = self._risk.adjust_intent(
+                symbol, side, quantity, price, self.projected_position(symbol), source)
+            if quantity <= 0:
                 return None
             if side == "buy":
                 if not self._risk.allows_buy(symbol, self.projected_position(symbol),

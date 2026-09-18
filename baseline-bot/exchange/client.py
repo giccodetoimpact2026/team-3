@@ -52,6 +52,9 @@ def positions_by_symbol(portfolio) -> dict:
             "reserved_qty": _int(p.get("reserved_qty")),
             "avg_cost": _int(p.get("avg_cost")),
             "last_price": _int(p.get("last_price")),
+            # Booked on this symbol this window; the risk model's instrument
+            # loss limit adds it to the live unrealized figure.
+            "realized_pnl": _int(p.get("realized_pnl")),
         }
     return out
 

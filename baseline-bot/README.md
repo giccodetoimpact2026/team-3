@@ -22,12 +22,25 @@ The starting Python bot for the GIC hackathon simulated exchange. It is
   a minute pauses new intents for `risk.anomaly_pause_seconds` (BUG-003).
 - Startup config validation: placeholder key, non-positive sizes or lookbacks,
   thresholds outside (0, 1), bad ports or heartbeat timings refuse to start.
+- Instrument risk model (`config.yaml` → `risk_model`, design in
+  `docs/risk-model-design.md`): per-instrument profiles (NOVA trending, AXON
+  follows NOVA, CRVX growth momentum, DRFT thin at a fifth of NOVA's size, ELXR
+  range-bound) size every buy by personality, 10-second-bar ATR regime and
+  visible book depth; a volatility-scaled stop-loss from cost basis sells into
+  the bids; a 15% drawdown of starting equity blocks buys; an NOVA+AXON group
+  cap, per-symbol notional cap and gross cap bound exposure; a per-symbol
+  session loss pauses that symbol's buys. Sells are never reduced. Everything
+  is reported under `risk` on `GET /status` (regime, ATR, stop level, drawdown,
+  exposure, alerts, last sizing decision) and adds no REST calls on the tick
+  path.
 
 ## What it deliberately lacks
 
-Stop-losses, a portfolio-level exposure cap, an `announcement` handler and
-structured logging. The other three instruments are wired on `origin/main`
-(commit 79e7901) in the instrument-centric config shape.
+An `announcement` handler, structured logging, a manual per-instrument
+pause/resume route (the model exposes `pause`/`resume`), regime-based strategy
+routing (the model exposes `regime(symbol)`), and spread-aware limit pricing.
+The other three instruments are wired on `origin/main` (commit 79e7901) in the
+instrument-centric config shape.
 
 ## Run
 
@@ -48,7 +61,7 @@ The bot also serves a local control endpoint (`config.yaml` → `control`, defau
 
 | Route | Answer |
 |---|---|
-| `GET /status` | `state` (RUNNING / QUIESCING / STOPPED), `session_id`, `session_open`, `unresolved`, `heartbeat_seq`, `heartbeat_age_s`, `feed_state` (ALIVE / DEGRADED / DEAD), `feed_age_s`, `feed_connected`, `feed_reconnects`, `feed_restarts`, `worker_alive`, `orders: {active_orders, active_symbols, unknown_orders, blocked, paused, pause_reason, pause_remaining_s, journal_seq}` |
+| `GET /status` | `state` (RUNNING / QUIESCING / STOPPED), `session_id`, `session_open`, `unresolved`, `heartbeat_seq`, `heartbeat_age_s`, `feed_state` (ALIVE / DEGRADED / DEAD), `feed_age_s`, `feed_connected`, `feed_reconnects`, `feed_restarts`, `worker_alive`, `orders: {active_orders, active_symbols, unknown_orders, blocked, paused, pause_reason, pause_remaining_s, journal_seq}`, `crash_guard`, `dca`, `risk: {mode, equity, baseline_equity, drawdown_start_pct, gross_exposure_pct, risk_at_stops_pct, groups, instruments: {SYMBOL: {regime, atr_pct, stop_level, stop_pct, loss_pct, session_pnl, paused, last_decision}}, correlation, alerts, max_position, exits}` |
 | `GET /orders?since=N` | `{seq, events}`: journal entries after `N`, each `{seq, at, kind, status, order_id, idempotency_key, symbol, side, quantity, price, remaining, filled, code, session_id}` |
 | `POST /halt` | Same path as Ctrl-C: block new intents, `cancel_all()`, stop; answers the status plus `unresolved` |
 
@@ -74,7 +87,10 @@ baseline-bot/
 ├── exchange/{client.py, feed.py, results.py, ratelimit.py}
 ├── orders/manager.py           # single owner of order state + journal + burst throttle
 ├── strategies/{base.py, momentum.py, mean_reversion.py}  # market_making.py.DISABLED (bonus)
-├── risk/limits.py
+├── risk/{limits.py, crash_guard.py, exits.py, stats.py, profiles.py, model.py}
+│                               # share caps, 15% crash guard, shared sell-into-bids exit,
+│                               # bar/ATR/regime/depth/correlation stats, instrument profiles,
+│                               # the risk model (sizing, stop-loss, drawdown, exposure caps)
 ├── utils/{logger.py, event_worker.py, control.py, heartbeat.py}
 ├── tests/                      # starter strategy tests
 └── .github/workflows/ci.yml    # starter CI (lint + tests)
