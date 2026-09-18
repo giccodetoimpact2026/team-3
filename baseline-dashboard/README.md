@@ -25,7 +25,7 @@ handover notes point at them.
 Open `index.html` in a browser, or serve the folder:
 
 ```bash
-python -m http.server 5500     # http://localhost:5500
+npm start                      # node server.js -> http://localhost:5500 (static + /exchange proxy, key from EXCHANGE_API_KEY or ../baseline-bot/.env)
 ```
 
 Edit [`js/config.js`](js/config.js): `API_BASE_URL` (sandbox/live), `API_KEY`, and
