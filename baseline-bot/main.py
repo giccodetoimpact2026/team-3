@@ -19,8 +19,10 @@ from exchange.ratelimit import RollingWindow
 from orders.manager import OrderManager
 from risk.exits import ExitPolicy
 from risk.limits import RiskLimits
+from strategies.base import Signal
 from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
+from news.engine import NewsEngine
 from strategies.pairs import PairsFollowStrategy
 from utils.control import ControlServer
 from utils.event_worker import EventWorker
@@ -95,7 +97,8 @@ def build_strategies(config):
     return strategies
 
 
-def make_price_handler(strategies, orders, state, lifecycle, exits=None):
+def make_price_handler(strategies, orders, state, lifecycle, exits=None,
+                       news_engine=None):
     """Build the handler for `price` events.
 
     Module level rather than a closure inside main() so the trading path can be
@@ -149,11 +152,35 @@ def make_price_handler(strategies, orders, state, lifecycle, exits=None):
                 return
 
         signal = strat.signal(sellable)
+        last_price = strat.prices[-1] if strat.prices else None
+
+        bias = news_engine.active_bias(symbol) if news_engine else None
+        if bias:
+            if bias.action == "pause":
+                return
+            news_qty = max(1, int(strat.trade_quantity * bias.size_multiplier))
+            if signal is not None:
+                if bias.action == "buy" and signal.side == "sell":
+                    log(f"news: suppressing sell for {symbol} (bullish bias)")
+                    return
+                if bias.action == "sell" and signal.side == "buy":
+                    log(f"news: suppressing buy for {symbol} (bearish bias)")
+                    return
+                if bias.action == signal.side:
+                    signal.quantity = max(signal.quantity, news_qty)
+            elif last_price is not None:
+                if bias.action == "buy":
+                    offset = last_price * strat.limit_offset_bps // 10_000
+                    signal = Signal("buy", news_qty, last_price + offset)
+                    log(f"news: generating buy for {symbol} (bullish bias, no strategy signal)")
+                elif bias.action == "sell" and sellable > 0:
+                    sell_qty = min(news_qty, sellable)
+                    offset = last_price * strat.limit_offset_bps // 10_000
+                    signal = Signal("sell", sell_qty, last_price - offset)
+                    log(f"news: generating sell for {symbol} (bearish bias, no strategy signal)")
+
         if signal is None:
             return
-
-        # Refusals, rejections and unknowns are all logged by OrderManager.
-        # Nothing is reported as submitted unless the exchange acknowledged it.
         orders.submit_intent(symbol, signal.side, signal.quantity, signal.limit_price)
 
     return on_price
@@ -330,8 +357,13 @@ def main():
         limit_offset_bps=config["risk"].get("exit_limit_offset_bps", 25),
     )
 
-    # Report starting positions and the risk parameters in force. Priya: "if I
-    # can't see the risk parameters, they might as well not exist."
+    # --- news engine -----------------------------------------------------------
+    news_cfg = config.get("news", {})
+    news_engine = NewsEngine(news_cfg) if news_cfg.get("enabled") else None
+    if news_engine:
+        log("news engine enabled")
+
+    # Report starting positions and the risk parameters in force.
     for sym, strat in strategies.items():
         log(f"{sym} [{type(strat).__name__}] starting position: "
             f"{client.get_positions(sym)}, cap {risk.max_position(sym)}, "
@@ -377,17 +409,22 @@ def main():
             for strat in strategies.values():
                 strat.reset()
             exits.reset()
+            if news_engine:
+                news_engine.reset()
             state["session_id"] = new_id
 
-    on_price = make_price_handler(strategies, orders, state, lifecycle, exits)
+    on_price = make_price_handler(strategies, orders, state, lifecycle, exits,
+                                  news_engine=news_engine)
 
     def on_announcement(payload):
-        # Announcements are logged only; no strategy reacts to them yet.
         log(
             f"announcement #{payload.get('announcement_id')} "
             f"[{payload.get('affected_symbol')}]: {payload.get('message')}"
         )
-
+        if lifecycle["value"] != RUNNING or not state["session_open"]:
+            return
+        if news_engine:
+            news_engine.on_announcement(payload)
 
     # --- signal handlers (P0-11, P0-14) -------------------------------------
 
@@ -415,6 +452,7 @@ def main():
         lambda: halt(client, lifecycle, shutdown_event),
         host=control_cfg.get("host", "127.0.0.1"),
         port=int(os.environ.get("BOT_CONTROL_PORT") or control_cfg.get("port", 8092)),
+        news_engine=news_engine,
     )
     control.start()
 
