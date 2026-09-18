@@ -6,12 +6,13 @@ the REST client. Single process, stdout logging.
 """
 import os
 import time
-import uuid
 
 import yaml
 
 from exchange.client import ExchangeClient
 from exchange.feed import SSEFeed
+from exchange.ratelimit import RollingWindow
+from orders.manager import OrderManager
 from risk.limits import RiskLimits
 from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
@@ -52,6 +53,16 @@ def main():
         primary, secondary,
     )
 
+    limits = config.get("rate_limits", {})
+    window = float(limits.get("window_seconds", 30))
+    orders = OrderManager(
+        client, risk,
+        max_active_per_symbol=config["risk"].get("max_active_orders_per_symbol", 1),
+        order_limiter=RollingWindow(limits.get("orders_per_window", 100), window),
+        shared_limiter=RollingWindow(limits.get("shared_per_window", 300), window,
+                                     reserve=limits.get("shared_reserve", 40)),
+    )
+
     # Report starting positions.
     for sym in strategies:
         log(f"{sym} starting position: {client.get_positions(sym)}")
@@ -70,15 +81,23 @@ def main():
         strat.on_price(payload["last_price"])
         if not session_open["value"]:
             return
-        position = client.get_positions(symbol)
-        signal = strat.signal(position)
+        # NOTE(P1): this still runs inside the SSE listener thread. Once the
+        # bounded event queue lands, everything below moves to the trading
+        # worker — OrderManager is thread-safe and does not care which thread
+        # calls it, but the REST calls must not block feed ingestion.
+        orders.poll()
+        # The strategies take one `position` argument, used only to decide
+        # whether they may sell and how much. Pass what is actually sellable —
+        # held shares minus those already reserved by our own resting sells —
+        # rather than the gross long, which oversells into INSUFFICIENT_POSITION.
+        # The buy-side cap is enforced inside OrderManager against projected
+        # exposure, which includes pending orders.
+        signal = strat.signal(orders.available_to_sell(symbol))
         if signal is None:
             return
-        if signal.side == "buy" and not risk.allows_buy(symbol, position, signal.quantity):
-            return
-        client.submit_limit_order(
-            symbol, signal.side, signal.quantity, signal.limit_price, str(uuid.uuid4()))
-        log(f"submitted {signal} for {symbol}")
+        # Refusals, rejections and unknowns are all logged by OrderManager.
+        # Nothing is reported as submitted unless the exchange acknowledged it.
+        orders.submit_intent(symbol, signal.side, signal.quantity, signal.limit_price)
 
     feed = SSEFeed(config["exchange"]["base_url"], config["exchange"]["api_key"])
     feed.on("session", on_session)
@@ -86,9 +105,15 @@ def main():
     feed.start()
     log("bot started")
 
-    # Keep the process alive. NOTE: there is no graceful shutdown — a Ctrl-C or
-    # kill signal exits without cancelling resting orders, which stay on the
-    # exchange. A SIGTERM handler that cancels open orders was never finished.
+    # Keep the process alive. NOTE(P3): there is still no graceful shutdown or
+    # session bootstrap here — `session_open` starts False and only moves on an
+    # SSE event, so a bot started mid-window never trades. OrderManager now
+    # provides what the lifecycle work needs:
+    #   orders.block_new_intents()      -- atomic, call before cancelling
+    #   orders.cancel_all()             -- (cancelled, unresolved); exit nonzero
+    #                                      if `unresolved` is non-empty
+    #   orders.reset_for_session(id)    -- drop per-window state at a boundary
+    #   orders.last_seen_session_id     -- read from GET /portfolio, no extra call
     try:
         while True:
             time.sleep(1)
