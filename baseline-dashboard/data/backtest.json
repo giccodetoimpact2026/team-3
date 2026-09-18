@@ -1,0 +1,5683 @@
+{
+  "generated_at": "2026-09-18T04:43:17.102857+00:00",
+  "source_file": "sample_feed.jsonl",
+  "session_id": "sess_demo_0001",
+  "sample": {
+    "ticks": 650,
+    "duration_seconds": 387,
+    "is_bundled_sample": true
+  },
+  "fill_model": {
+    "type": "next_tick_marketable",
+    "slippage_bps": 0
+  },
+  "caveats": [
+    "Single session, small sample - directional only, not statistically significant.",
+    "Fills are simulated from a price-only series: no order book, no partial fills, no liquidity limit. Results are optimistic and flatter large sizes.",
+    "Next-tick fill avoids look-ahead but cannot model real market impact.",
+    "Hypothesis generation, not a recommendation. Sandbox data only; not advice."
+  ],
+  "instruments": [
+    {
+      "symbol": "NOVA",
+      "strategy_type": "momentum",
+      "ticks": 130,
+      "current_params": {
+        "lookback_samples": 10,
+        "momentum_threshold": 0.008
+      },
+      "winner_params": {
+        "lookback_samples": 5,
+        "momentum_threshold": 0.003
+      },
+      "results": [
+        {
+          "params": {
+            "lookback_samples": 5,
+            "momentum_threshold": 0.003
+          },
+          "metrics": {
+            "total_pnl_cents": 1146000,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 1146000,
+            "trade_count": 10,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 500,
+            "max_drawdown_cents": -16000
+          },
+          "equity_curve": [
+            {
+              "t": 0,
+              "equity_cents": 0
+            },
+            {
+              "t": 1,
+              "equity_cents": 0
+            },
+            {
+              "t": 2,
+              "equity_cents": 0
+            },
+            {
+              "t": 3,
+              "equity_cents": 0
+            },
+            {
+              "t": 4,
+              "equity_cents": 0
+            },
+            {
+              "t": 5,
+              "equity_cents": 0
+            },
+            {
+              "t": 6,
+              "equity_cents": 0
+            },
+            {
+              "t": 7,
+              "equity_cents": 0
+            },
+            {
+              "t": 8,
+              "equity_cents": 0
+            },
+            {
+              "t": 9,
+              "equity_cents": 1500
+            },
+            {
+              "t": 10,
+              "equity_cents": 1900
+            },
+            {
+              "t": 11,
+              "equity_cents": 2400
+            },
+            {
+              "t": 12,
+              "equity_cents": 5800
+            },
+            {
+              "t": 13,
+              "equity_cents": 4300
+            },
+            {
+              "t": 14,
+              "equity_cents": 10100
+            },
+            {
+              "t": 15,
+              "equity_cents": 9800
+            },
+            {
+              "t": 16,
+              "equity_cents": 13400
+            },
+            {
+              "t": 17,
+              "equity_cents": 19700
+            },
+            {
+              "t": 18,
+              "equity_cents": 24950
+            },
+            {
+              "t": 19,
+              "equity_cents": 26300
+            },
+            {
+              "t": 20,
+              "equity_cents": 32900
+            },
+            {
+              "t": 21,
+              "equity_cents": 35750
+            },
+            {
+              "t": 22,
+              "equity_cents": 36650
+            },
+            {
+              "t": 23,
+              "equity_cents": 35250
+            },
+            {
+              "t": 24,
+              "equity_cents": 46000
+            },
+            {
+              "t": 25,
+              "equity_cents": 51000
+            },
+            {
+              "t": 26,
+              "equity_cents": 56000
+            },
+            {
+              "t": 27,
+              "equity_cents": 64750
+            },
+            {
+              "t": 28,
+              "equity_cents": 62000
+            },
+            {
+              "t": 29,
+              "equity_cents": 77000
+            },
+            {
+              "t": 30,
+              "equity_cents": 89600
+            },
+            {
+              "t": 31,
+              "equity_cents": 91100
+            },
+            {
+              "t": 32,
+              "equity_cents": 103700
+            },
+            {
+              "t": 33,
+              "equity_cents": 101600
+            },
+            {
+              "t": 34,
+              "equity_cents": 121200
+            },
+            {
+              "t": 35,
+              "equity_cents": 116800
+            },
+            {
+              "t": 36,
+              "equity_cents": 129850
+            },
+            {
+              "t": 37,
+              "equity_cents": 145600
+            },
+            {
+              "t": 38,
+              "equity_cents": 145600
+            },
+            {
+              "t": 39,
+              "equity_cents": 169600
+            },
+            {
+              "t": 40,
+              "equity_cents": 194100
+            },
+            {
+              "t": 41,
+              "equity_cents": 185600
+            },
+            {
+              "t": 42,
+              "equity_cents": 194600
+            },
+            {
+              "t": 43,
+              "equity_cents": 199100
+            },
+            {
+              "t": 44,
+              "equity_cents": 229600
+            },
+            {
+              "t": 45,
+              "equity_cents": 233100
+            },
+            {
+              "t": 46,
+              "equity_cents": 245100
+            },
+            {
+              "t": 47,
+              "equity_cents": 255600
+            },
+            {
+              "t": 48,
+              "equity_cents": 251600
+            },
+            {
+              "t": 49,
+              "equity_cents": 286600
+            },
+            {
+              "t": 50,
+              "equity_cents": 278100
+            },
+            {
+              "t": 51,
+              "equity_cents": 294600
+            },
+            {
+              "t": 52,
+              "equity_cents": 319600
+            },
+            {
+              "t": 53,
+              "equity_cents": 305100
+            },
+            {
+              "t": 54,
+              "equity_cents": 331100
+            },
+            {
+              "t": 55,
+              "equity_cents": 342600
+            },
+            {
+              "t": 56,
+              "equity_cents": 349100
+            },
+            {
+              "t": 57,
+              "equity_cents": 362600
+            },
+            {
+              "t": 58,
+              "equity_cents": 387600
+            },
+            {
+              "t": 59,
+              "equity_cents": 371600
+            },
+            {
+              "t": 60,
+              "equity_cents": 403600
+            },
+            {
+              "t": 61,
+              "equity_cents": 409100
+            },
+            {
+              "t": 62,
+              "equity_cents": 421100
+            },
+            {
+              "t": 63,
+              "equity_cents": 408600
+            },
+            {
+              "t": 64,
+              "equity_cents": 454100
+            },
+            {
+              "t": 65,
+              "equity_cents": 451600
+            },
+            {
+              "t": 66,
+              "equity_cents": 462600
+            },
+            {
+              "t": 67,
+              "equity_cents": 458100
+            },
+            {
+              "t": 68,
+              "equity_cents": 484100
+            },
+            {
+              "t": 69,
+              "equity_cents": 509100
+            },
+            {
+              "t": 70,
+              "equity_cents": 515100
+            },
+            {
+              "t": 71,
+              "equity_cents": 514100
+            },
+            {
+              "t": 72,
+              "equity_cents": 525100
+            },
+            {
+              "t": 73,
+              "equity_cents": 545100
+            },
+            {
+              "t": 74,
+              "equity_cents": 534100
+            },
+            {
+              "t": 75,
+              "equity_cents": 561600
+            },
+            {
+              "t": 76,
+              "equity_cents": 568600
+            },
+            {
+              "t": 77,
+              "equity_cents": 585600
+            },
+            {
+              "t": 78,
+              "equity_cents": 602100
+            },
+            {
+              "t": 79,
+              "equity_cents": 603100
+            },
+            {
+              "t": 80,
+              "equity_cents": 608100
+            },
+            {
+              "t": 81,
+              "equity_cents": 619600
+            },
+            {
+              "t": 82,
+              "equity_cents": 642600
+            },
+            {
+              "t": 83,
+              "equity_cents": 649100
+            },
+            {
+              "t": 84,
+              "equity_cents": 647100
+            },
+            {
+              "t": 85,
+              "equity_cents": 669100
+            },
+            {
+              "t": 86,
+              "equity_cents": 687600
+            },
+            {
+              "t": 87,
+              "equity_cents": 690600
+            },
+            {
+              "t": 88,
+              "equity_cents": 689100
+            },
+            {
+              "t": 89,
+              "equity_cents": 705100
+            },
+            {
+              "t": 90,
+              "equity_cents": 736100
+            },
+            {
+              "t": 91,
+              "equity_cents": 748100
+            },
+            {
+              "t": 92,
+              "equity_cents": 752600
+            },
+            {
+              "t": 93,
+              "equity_cents": 756100
+            },
+            {
+              "t": 94,
+              "equity_cents": 758600
+            },
+            {
+              "t": 95,
+              "equity_cents": 788600
+            },
+            {
+              "t": 96,
+              "equity_cents": 789600
+            },
+            {
+              "t": 97,
+              "equity_cents": 783600
+            },
+            {
+              "t": 98,
+              "equity_cents": 813100
+            },
+            {
+              "t": 99,
+              "equity_cents": 834600
+            },
+            {
+              "t": 100,
+              "equity_cents": 832600
+            },
+            {
+              "t": 101,
+              "equity_cents": 847100
+            },
+            {
+              "t": 102,
+              "equity_cents": 858100
+            },
+            {
+              "t": 103,
+              "equity_cents": 850100
+            },
+            {
+              "t": 104,
+              "equity_cents": 886600
+            },
+            {
+              "t": 105,
+              "equity_cents": 876600
+            },
+            {
+              "t": 106,
+              "equity_cents": 909600
+            },
+            {
+              "t": 107,
+              "equity_cents": 896600
+            },
+            {
+              "t": 108,
+              "equity_cents": 932100
+            },
+            {
+              "t": 109,
+              "equity_cents": 945600
+            },
+            {
+              "t": 110,
+              "equity_cents": 939600
+            },
+            {
+              "t": 111,
+              "equity_cents": 945100
+            },
+            {
+              "t": 112,
+              "equity_cents": 958100
+            },
+            {
+              "t": 113,
+              "equity_cents": 963600
+            },
+            {
+              "t": 114,
+              "equity_cents": 985600
+            },
+            {
+              "t": 115,
+              "equity_cents": 1015100
+            },
+            {
+              "t": 116,
+              "equity_cents": 1008100
+            },
+            {
+              "t": 117,
+              "equity_cents": 1016600
+            },
+            {
+              "t": 118,
+              "equity_cents": 1035600
+            },
+            {
+              "t": 119,
+              "equity_cents": 1058600
+            },
+            {
+              "t": 120,
+              "equity_cents": 1066600
+            },
+            {
+              "t": 121,
+              "equity_cents": 1053100
+            },
+            {
+              "t": 122,
+              "equity_cents": 1073100
+            },
+            {
+              "t": 123,
+              "equity_cents": 1085100
+            },
+            {
+              "t": 124,
+              "equity_cents": 1098100
+            },
+            {
+              "t": 125,
+              "equity_cents": 1105600
+            },
+            {
+              "t": 126,
+              "equity_cents": 1131100
+            },
+            {
+              "t": 127,
+              "equity_cents": 1137100
+            },
+            {
+              "t": 128,
+              "equity_cents": 1153600
+            },
+            {
+              "t": 129,
+              "equity_cents": 1145600
+            }
+          ],
+          "is_current": false,
+          "rank": 1,
+          "is_winner": true
+        },
+        {
+          "params": {
+            "lookback_samples": 5,
+            "momentum_threshold": 0.005
+          },
+          "metrics": {
+            "total_pnl_cents": 1146000,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 1146000,
+            "trade_count": 10,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 500,
+            "max_drawdown_cents": -16000
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 2,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 10,
+            "momentum_threshold": 0.003
+          },
+          "metrics": {
+            "total_pnl_cents": 1109500,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 1109500,
+            "trade_count": 10,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 500,
+            "max_drawdown_cents": -16000
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 3,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 10,
+            "momentum_threshold": 0.005
+          },
+          "metrics": {
+            "total_pnl_cents": 1109500,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 1109500,
+            "trade_count": 10,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 500,
+            "max_drawdown_cents": -16000
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 4,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 10,
+            "momentum_threshold": 0.008
+          },
+          "metrics": {
+            "total_pnl_cents": 1109500,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 1109500,
+            "trade_count": 10,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 500,
+            "max_drawdown_cents": -16000
+          },
+          "equity_curve": [
+            {
+              "t": 0,
+              "equity_cents": 0
+            },
+            {
+              "t": 1,
+              "equity_cents": 0
+            },
+            {
+              "t": 2,
+              "equity_cents": 0
+            },
+            {
+              "t": 3,
+              "equity_cents": 0
+            },
+            {
+              "t": 4,
+              "equity_cents": 0
+            },
+            {
+              "t": 5,
+              "equity_cents": 0
+            },
+            {
+              "t": 6,
+              "equity_cents": 0
+            },
+            {
+              "t": 7,
+              "equity_cents": 0
+            },
+            {
+              "t": 8,
+              "equity_cents": 0
+            },
+            {
+              "t": 9,
+              "equity_cents": 0
+            },
+            {
+              "t": 10,
+              "equity_cents": 0
+            },
+            {
+              "t": 11,
+              "equity_cents": 0
+            },
+            {
+              "t": 12,
+              "equity_cents": 0
+            },
+            {
+              "t": 13,
+              "equity_cents": 0
+            },
+            {
+              "t": 14,
+              "equity_cents": 2900
+            },
+            {
+              "t": 15,
+              "equity_cents": 2750
+            },
+            {
+              "t": 16,
+              "equity_cents": 5150
+            },
+            {
+              "t": 17,
+              "equity_cents": 9350
+            },
+            {
+              "t": 18,
+              "equity_cents": 12850
+            },
+            {
+              "t": 19,
+              "equity_cents": 13750
+            },
+            {
+              "t": 20,
+              "equity_cents": 18150
+            },
+            {
+              "t": 21,
+              "equity_cents": 20050
+            },
+            {
+              "t": 22,
+              "equity_cents": 20650
+            },
+            {
+              "t": 23,
+              "equity_cents": 19600
+            },
+            {
+              "t": 24,
+              "equity_cents": 28200
+            },
+            {
+              "t": 25,
+              "equity_cents": 32200
+            },
+            {
+              "t": 26,
+              "equity_cents": 36200
+            },
+            {
+              "t": 27,
+              "equity_cents": 43200
+            },
+            {
+              "t": 28,
+              "equity_cents": 41000
+            },
+            {
+              "t": 29,
+              "equity_cents": 53500
+            },
+            {
+              "t": 30,
+              "equity_cents": 64000
+            },
+            {
+              "t": 31,
+              "equity_cents": 65250
+            },
+            {
+              "t": 32,
+              "equity_cents": 76050
+            },
+            {
+              "t": 33,
+              "equity_cents": 74250
+            },
+            {
+              "t": 34,
+              "equity_cents": 91400
+            },
+            {
+              "t": 35,
+              "equity_cents": 87550
+            },
+            {
+              "t": 36,
+              "equity_cents": 99150
+            },
+            {
+              "t": 37,
+              "equity_cents": 113150
+            },
+            {
+              "t": 38,
+              "equity_cents": 113150
+            },
+            {
+              "t": 39,
+              "equity_cents": 134750
+            },
+            {
+              "t": 40,
+              "equity_cents": 156800
+            },
+            {
+              "t": 41,
+              "equity_cents": 149150
+            },
+            {
+              "t": 42,
+              "equity_cents": 158150
+            },
+            {
+              "t": 43,
+              "equity_cents": 162650
+            },
+            {
+              "t": 44,
+              "equity_cents": 193150
+            },
+            {
+              "t": 45,
+              "equity_cents": 196650
+            },
+            {
+              "t": 46,
+              "equity_cents": 208650
+            },
+            {
+              "t": 47,
+              "equity_cents": 219150
+            },
+            {
+              "t": 48,
+              "equity_cents": 215150
+            },
+            {
+              "t": 49,
+              "equity_cents": 250150
+            },
+            {
+              "t": 50,
+              "equity_cents": 241650
+            },
+            {
+              "t": 51,
+              "equity_cents": 258150
+            },
+            {
+              "t": 52,
+              "equity_cents": 283150
+            },
+            {
+              "t": 53,
+              "equity_cents": 268650
+            },
+            {
+              "t": 54,
+              "equity_cents": 294650
+            },
+            {
+              "t": 55,
+              "equity_cents": 306150
+            },
+            {
+              "t": 56,
+              "equity_cents": 312650
+            },
+            {
+              "t": 57,
+              "equity_cents": 326150
+            },
+            {
+              "t": 58,
+              "equity_cents": 351150
+            },
+            {
+              "t": 59,
+              "equity_cents": 335150
+            },
+            {
+              "t": 60,
+              "equity_cents": 367150
+            },
+            {
+              "t": 61,
+              "equity_cents": 372650
+            },
+            {
+              "t": 62,
+              "equity_cents": 384650
+            },
+            {
+              "t": 63,
+              "equity_cents": 372150
+            },
+            {
+              "t": 64,
+              "equity_cents": 417650
+            },
+            {
+              "t": 65,
+              "equity_cents": 415150
+            },
+            {
+              "t": 66,
+              "equity_cents": 426150
+            },
+            {
+              "t": 67,
+              "equity_cents": 421650
+            },
+            {
+              "t": 68,
+              "equity_cents": 447650
+            },
+            {
+              "t": 69,
+              "equity_cents": 472650
+            },
+            {
+              "t": 70,
+              "equity_cents": 478650
+            },
+            {
+              "t": 71,
+              "equity_cents": 477650
+            },
+            {
+              "t": 72,
+              "equity_cents": 488650
+            },
+            {
+              "t": 73,
+              "equity_cents": 508650
+            },
+            {
+              "t": 74,
+              "equity_cents": 497650
+            },
+            {
+              "t": 75,
+              "equity_cents": 525150
+            },
+            {
+              "t": 76,
+              "equity_cents": 532150
+            },
+            {
+              "t": 77,
+              "equity_cents": 549150
+            },
+            {
+              "t": 78,
+              "equity_cents": 565650
+            },
+            {
+              "t": 79,
+              "equity_cents": 566650
+            },
+            {
+              "t": 80,
+              "equity_cents": 571650
+            },
+            {
+              "t": 81,
+              "equity_cents": 583150
+            },
+            {
+              "t": 82,
+              "equity_cents": 606150
+            },
+            {
+              "t": 83,
+              "equity_cents": 612650
+            },
+            {
+              "t": 84,
+              "equity_cents": 610650
+            },
+            {
+              "t": 85,
+              "equity_cents": 632650
+            },
+            {
+              "t": 86,
+              "equity_cents": 651150
+            },
+            {
+              "t": 87,
+              "equity_cents": 654150
+            },
+            {
+              "t": 88,
+              "equity_cents": 652650
+            },
+            {
+              "t": 89,
+              "equity_cents": 668650
+            },
+            {
+              "t": 90,
+              "equity_cents": 699650
+            },
+            {
+              "t": 91,
+              "equity_cents": 711650
+            },
+            {
+              "t": 92,
+              "equity_cents": 716150
+            },
+            {
+              "t": 93,
+              "equity_cents": 719650
+            },
+            {
+              "t": 94,
+              "equity_cents": 722150
+            },
+            {
+              "t": 95,
+              "equity_cents": 752150
+            },
+            {
+              "t": 96,
+              "equity_cents": 753150
+            },
+            {
+              "t": 97,
+              "equity_cents": 747150
+            },
+            {
+              "t": 98,
+              "equity_cents": 776650
+            },
+            {
+              "t": 99,
+              "equity_cents": 798150
+            },
+            {
+              "t": 100,
+              "equity_cents": 796150
+            },
+            {
+              "t": 101,
+              "equity_cents": 810650
+            },
+            {
+              "t": 102,
+              "equity_cents": 821650
+            },
+            {
+              "t": 103,
+              "equity_cents": 813650
+            },
+            {
+              "t": 104,
+              "equity_cents": 850150
+            },
+            {
+              "t": 105,
+              "equity_cents": 840150
+            },
+            {
+              "t": 106,
+              "equity_cents": 873150
+            },
+            {
+              "t": 107,
+              "equity_cents": 860150
+            },
+            {
+              "t": 108,
+              "equity_cents": 895650
+            },
+            {
+              "t": 109,
+              "equity_cents": 909150
+            },
+            {
+              "t": 110,
+              "equity_cents": 903150
+            },
+            {
+              "t": 111,
+              "equity_cents": 908650
+            },
+            {
+              "t": 112,
+              "equity_cents": 921650
+            },
+            {
+              "t": 113,
+              "equity_cents": 927150
+            },
+            {
+              "t": 114,
+              "equity_cents": 949150
+            },
+            {
+              "t": 115,
+              "equity_cents": 978650
+            },
+            {
+              "t": 116,
+              "equity_cents": 971650
+            },
+            {
+              "t": 117,
+              "equity_cents": 980150
+            },
+            {
+              "t": 118,
+              "equity_cents": 999150
+            },
+            {
+              "t": 119,
+              "equity_cents": 1022150
+            },
+            {
+              "t": 120,
+              "equity_cents": 1030150
+            },
+            {
+              "t": 121,
+              "equity_cents": 1016650
+            },
+            {
+              "t": 122,
+              "equity_cents": 1036650
+            },
+            {
+              "t": 123,
+              "equity_cents": 1048650
+            },
+            {
+              "t": 124,
+              "equity_cents": 1061650
+            },
+            {
+              "t": 125,
+              "equity_cents": 1069150
+            },
+            {
+              "t": 126,
+              "equity_cents": 1094650
+            },
+            {
+              "t": 127,
+              "equity_cents": 1100650
+            },
+            {
+              "t": 128,
+              "equity_cents": 1117150
+            },
+            {
+              "t": 129,
+              "equity_cents": 1109150
+            }
+          ],
+          "is_current": true,
+          "rank": 5,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 15,
+            "momentum_threshold": 0.003
+          },
+          "metrics": {
+            "total_pnl_cents": 1072500,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 1072500,
+            "trade_count": 10,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 500,
+            "max_drawdown_cents": -16000
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 6,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 15,
+            "momentum_threshold": 0.005
+          },
+          "metrics": {
+            "total_pnl_cents": 1072500,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 1072500,
+            "trade_count": 10,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 500,
+            "max_drawdown_cents": -16000
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 7,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 15,
+            "momentum_threshold": 0.008
+          },
+          "metrics": {
+            "total_pnl_cents": 1072500,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 1072500,
+            "trade_count": 10,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 500,
+            "max_drawdown_cents": -16000
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 8,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 5,
+            "momentum_threshold": 0.008
+          },
+          "metrics": {
+            "total_pnl_cents": 485400,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 485400,
+            "trade_count": 6,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 300,
+            "max_drawdown_cents": -8100
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 9,
+          "is_winner": false
+        }
+      ]
+    },
+    {
+      "symbol": "CRVX",
+      "strategy_type": "momentum",
+      "ticks": 130,
+      "current_params": {
+        "lookback_samples": 10,
+        "momentum_threshold": 0.005
+      },
+      "winner_params": {
+        "lookback_samples": 5,
+        "momentum_threshold": 0.003
+      },
+      "results": [
+        {
+          "params": {
+            "lookback_samples": 5,
+            "momentum_threshold": 0.003
+          },
+          "metrics": {
+            "total_pnl_cents": 1404400,
+            "realized_pnl_cents": 1404400,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 16,
+            "sell_count": 8,
+            "win_rate": 1.0,
+            "final_position": 0,
+            "max_drawdown_cents": -407900
+          },
+          "equity_curve": [
+            {
+              "t": 0,
+              "equity_cents": 0
+            },
+            {
+              "t": 1,
+              "equity_cents": 0
+            },
+            {
+              "t": 2,
+              "equity_cents": 0
+            },
+            {
+              "t": 3,
+              "equity_cents": 0
+            },
+            {
+              "t": 4,
+              "equity_cents": 0
+            },
+            {
+              "t": 5,
+              "equity_cents": 0
+            },
+            {
+              "t": 6,
+              "equity_cents": 0
+            },
+            {
+              "t": 7,
+              "equity_cents": 14600
+            },
+            {
+              "t": 8,
+              "equity_cents": 16800
+            },
+            {
+              "t": 9,
+              "equity_cents": 26600
+            },
+            {
+              "t": 10,
+              "equity_cents": 32000
+            },
+            {
+              "t": 11,
+              "equity_cents": 39000
+            },
+            {
+              "t": 12,
+              "equity_cents": 41600
+            },
+            {
+              "t": 13,
+              "equity_cents": 48200
+            },
+            {
+              "t": 14,
+              "equity_cents": 63200
+            },
+            {
+              "t": 15,
+              "equity_cents": 63800
+            },
+            {
+              "t": 16,
+              "equity_cents": 65800
+            },
+            {
+              "t": 17,
+              "equity_cents": 89800
+            },
+            {
+              "t": 18,
+              "equity_cents": 99400
+            },
+            {
+              "t": 19,
+              "equity_cents": 114200
+            },
+            {
+              "t": 20,
+              "equity_cents": 117000
+            },
+            {
+              "t": 21,
+              "equity_cents": 134600
+            },
+            {
+              "t": 22,
+              "equity_cents": 135800
+            },
+            {
+              "t": 23,
+              "equity_cents": 155000
+            },
+            {
+              "t": 24,
+              "equity_cents": 163400
+            },
+            {
+              "t": 25,
+              "equity_cents": 224000
+            },
+            {
+              "t": 26,
+              "equity_cents": 218000
+            },
+            {
+              "t": 27,
+              "equity_cents": 262000
+            },
+            {
+              "t": 28,
+              "equity_cents": 264400
+            },
+            {
+              "t": 29,
+              "equity_cents": 259400
+            },
+            {
+              "t": 30,
+              "equity_cents": 331400
+            },
+            {
+              "t": 31,
+              "equity_cents": 351800
+            },
+            {
+              "t": 32,
+              "equity_cents": 419000
+            },
+            {
+              "t": 33,
+              "equity_cents": 443000
+            },
+            {
+              "t": 34,
+              "equity_cents": 464600
+            },
+            {
+              "t": 35,
+              "equity_cents": 533000
+            },
+            {
+              "t": 36,
+              "equity_cents": 512600
+            },
+            {
+              "t": 37,
+              "equity_cents": 610600
+            },
+            {
+              "t": 38,
+              "equity_cents": 649800
+            },
+            {
+              "t": 39,
+              "equity_cents": 672200
+            },
+            {
+              "t": 40,
+              "equity_cents": 710000
+            },
+            {
+              "t": 41,
+              "equity_cents": 756200
+            },
+            {
+              "t": 42,
+              "equity_cents": 855600
+            },
+            {
+              "t": 43,
+              "equity_cents": 806600
+            },
+            {
+              "t": 44,
+              "equity_cents": 889100
+            },
+            {
+              "t": 45,
+              "equity_cents": 883100
+            },
+            {
+              "t": 46,
+              "equity_cents": 995600
+            },
+            {
+              "t": 47,
+              "equity_cents": 1049600
+            },
+            {
+              "t": 48,
+              "equity_cents": 1096100
+            },
+            {
+              "t": 49,
+              "equity_cents": 1123100
+            },
+            {
+              "t": 50,
+              "equity_cents": 1213100
+            },
+            {
+              "t": 51,
+              "equity_cents": 1229600
+            },
+            {
+              "t": 52,
+              "equity_cents": 1214600
+            },
+            {
+              "t": 53,
+              "equity_cents": 1234100
+            },
+            {
+              "t": 54,
+              "equity_cents": 1324100
+            },
+            {
+              "t": 55,
+              "equity_cents": 1421600
+            },
+            {
+              "t": 56,
+              "equity_cents": 1417100
+            },
+            {
+              "t": 57,
+              "equity_cents": 1489100
+            },
+            {
+              "t": 58,
+              "equity_cents": 1528100
+            },
+            {
+              "t": 59,
+              "equity_cents": 1567100
+            },
+            {
+              "t": 60,
+              "equity_cents": 1595600
+            },
+            {
+              "t": 61,
+              "equity_cents": 1639100
+            },
+            {
+              "t": 62,
+              "equity_cents": 1694600
+            },
+            {
+              "t": 63,
+              "equity_cents": 1717100
+            },
+            {
+              "t": 64,
+              "equity_cents": 1735100
+            },
+            {
+              "t": 65,
+              "equity_cents": 1807100
+            },
+            {
+              "t": 66,
+              "equity_cents": 1789100
+            },
+            {
+              "t": 67,
+              "equity_cents": 1790600
+            },
+            {
+              "t": 68,
+              "equity_cents": 1730600
+            },
+            {
+              "t": 69,
+              "equity_cents": 1745600
+            },
+            {
+              "t": 70,
+              "equity_cents": 1687100
+            },
+            {
+              "t": 71,
+              "equity_cents": 1684100
+            },
+            {
+              "t": 72,
+              "equity_cents": 1616500
+            },
+            {
+              "t": 73,
+              "equity_cents": 1611300
+            },
+            {
+              "t": 74,
+              "equity_cents": 1581600
+            },
+            {
+              "t": 75,
+              "equity_cents": 1558500
+            },
+            {
+              "t": 76,
+              "equity_cents": 1527700
+            },
+            {
+              "t": 77,
+              "equity_cents": 1540900
+            },
+            {
+              "t": 78,
+              "equity_cents": 1495000
+            },
+            {
+              "t": 79,
+              "equity_cents": 1469800
+            },
+            {
+              "t": 80,
+              "equity_cents": 1477900
+            },
+            {
+              "t": 81,
+              "equity_cents": 1475100
+            },
+            {
+              "t": 82,
+              "equity_cents": 1439600
+            },
+            {
+              "t": 83,
+              "equity_cents": 1445100
+            },
+            {
+              "t": 84,
+              "equity_cents": 1443000
+            },
+            {
+              "t": 85,
+              "equity_cents": 1432500
+            },
+            {
+              "t": 86,
+              "equity_cents": 1430700
+            },
+            {
+              "t": 87,
+              "equity_cents": 1420800
+            },
+            {
+              "t": 88,
+              "equity_cents": 1399200
+            },
+            {
+              "t": 89,
+              "equity_cents": 1407300
+            },
+            {
+              "t": 90,
+              "equity_cents": 1403800
+            },
+            {
+              "t": 91,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 92,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 93,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 94,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 95,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 96,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 97,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 98,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 99,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 100,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 101,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 102,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 103,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 104,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 105,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 106,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 107,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 108,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 109,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 110,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 111,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 112,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 113,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 114,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 115,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 116,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 117,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 118,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 119,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 120,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 121,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 122,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 123,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 124,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 125,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 126,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 127,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 128,
+              "equity_cents": 1404000
+            },
+            {
+              "t": 129,
+              "equity_cents": 1404000
+            }
+          ],
+          "is_current": false,
+          "rank": 1,
+          "is_winner": true
+        },
+        {
+          "params": {
+            "lookback_samples": 5,
+            "momentum_threshold": 0.005
+          },
+          "metrics": {
+            "total_pnl_cents": 1404400,
+            "realized_pnl_cents": 1404400,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 16,
+            "sell_count": 8,
+            "win_rate": 1.0,
+            "final_position": 0,
+            "max_drawdown_cents": -407900
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 2,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 5,
+            "momentum_threshold": 0.008
+          },
+          "metrics": {
+            "total_pnl_cents": 1245000,
+            "realized_pnl_cents": 1245000,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 16,
+            "sell_count": 8,
+            "win_rate": 1.0,
+            "final_position": 0,
+            "max_drawdown_cents": -564800
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 3,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 10,
+            "momentum_threshold": 0.003
+          },
+          "metrics": {
+            "total_pnl_cents": 1085200,
+            "realized_pnl_cents": 1085200,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 16,
+            "sell_count": 8,
+            "win_rate": 1.0,
+            "final_position": 0,
+            "max_drawdown_cents": -496600
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 4,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 10,
+            "momentum_threshold": 0.005
+          },
+          "metrics": {
+            "total_pnl_cents": 1085200,
+            "realized_pnl_cents": 1085200,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 16,
+            "sell_count": 8,
+            "win_rate": 1.0,
+            "final_position": 0,
+            "max_drawdown_cents": -496600
+          },
+          "equity_curve": [
+            {
+              "t": 0,
+              "equity_cents": 0
+            },
+            {
+              "t": 1,
+              "equity_cents": 0
+            },
+            {
+              "t": 2,
+              "equity_cents": 0
+            },
+            {
+              "t": 3,
+              "equity_cents": 0
+            },
+            {
+              "t": 4,
+              "equity_cents": 0
+            },
+            {
+              "t": 5,
+              "equity_cents": 0
+            },
+            {
+              "t": 6,
+              "equity_cents": 0
+            },
+            {
+              "t": 7,
+              "equity_cents": 0
+            },
+            {
+              "t": 8,
+              "equity_cents": 0
+            },
+            {
+              "t": 9,
+              "equity_cents": 0
+            },
+            {
+              "t": 10,
+              "equity_cents": 0
+            },
+            {
+              "t": 11,
+              "equity_cents": 0
+            },
+            {
+              "t": 12,
+              "equity_cents": 0
+            },
+            {
+              "t": 13,
+              "equity_cents": 0
+            },
+            {
+              "t": 14,
+              "equity_cents": 0
+            },
+            {
+              "t": 15,
+              "equity_cents": 0
+            },
+            {
+              "t": 16,
+              "equity_cents": 1000
+            },
+            {
+              "t": 17,
+              "equity_cents": 13000
+            },
+            {
+              "t": 18,
+              "equity_cents": 17800
+            },
+            {
+              "t": 19,
+              "equity_cents": 25200
+            },
+            {
+              "t": 20,
+              "equity_cents": 26600
+            },
+            {
+              "t": 21,
+              "equity_cents": 35400
+            },
+            {
+              "t": 22,
+              "equity_cents": 36000
+            },
+            {
+              "t": 23,
+              "equity_cents": 48800
+            },
+            {
+              "t": 24,
+              "equity_cents": 54400
+            },
+            {
+              "t": 25,
+              "equity_cents": 94800
+            },
+            {
+              "t": 26,
+              "equity_cents": 90800
+            },
+            {
+              "t": 27,
+              "equity_cents": 123800
+            },
+            {
+              "t": 28,
+              "equity_cents": 125600
+            },
+            {
+              "t": 29,
+              "equity_cents": 121600
+            },
+            {
+              "t": 30,
+              "equity_cents": 181600
+            },
+            {
+              "t": 31,
+              "equity_cents": 198600
+            },
+            {
+              "t": 32,
+              "equity_cents": 254600
+            },
+            {
+              "t": 33,
+              "equity_cents": 274600
+            },
+            {
+              "t": 34,
+              "equity_cents": 292600
+            },
+            {
+              "t": 35,
+              "equity_cents": 349600
+            },
+            {
+              "t": 36,
+              "equity_cents": 332600
+            },
+            {
+              "t": 37,
+              "equity_cents": 416600
+            },
+            {
+              "t": 38,
+              "equity_cents": 450200
+            },
+            {
+              "t": 39,
+              "equity_cents": 469400
+            },
+            {
+              "t": 40,
+              "equity_cents": 501800
+            },
+            {
+              "t": 41,
+              "equity_cents": 541400
+            },
+            {
+              "t": 42,
+              "equity_cents": 626600
+            },
+            {
+              "t": 43,
+              "equity_cents": 584600
+            },
+            {
+              "t": 44,
+              "equity_cents": 661600
+            },
+            {
+              "t": 45,
+              "equity_cents": 656000
+            },
+            {
+              "t": 46,
+              "equity_cents": 768500
+            },
+            {
+              "t": 47,
+              "equity_cents": 822500
+            },
+            {
+              "t": 48,
+              "equity_cents": 869000
+            },
+            {
+              "t": 49,
+              "equity_cents": 896000
+            },
+            {
+              "t": 50,
+              "equity_cents": 986000
+            },
+            {
+              "t": 51,
+              "equity_cents": 1002500
+            },
+            {
+              "t": 52,
+              "equity_cents": 987500
+            },
+            {
+              "t": 53,
+              "equity_cents": 1007000
+            },
+            {
+              "t": 54,
+              "equity_cents": 1097000
+            },
+            {
+              "t": 55,
+              "equity_cents": 1194500
+            },
+            {
+              "t": 56,
+              "equity_cents": 1190000
+            },
+            {
+              "t": 57,
+              "equity_cents": 1262000
+            },
+            {
+              "t": 58,
+              "equity_cents": 1301000
+            },
+            {
+              "t": 59,
+              "equity_cents": 1340000
+            },
+            {
+              "t": 60,
+              "equity_cents": 1368500
+            },
+            {
+              "t": 61,
+              "equity_cents": 1412000
+            },
+            {
+              "t": 62,
+              "equity_cents": 1467500
+            },
+            {
+              "t": 63,
+              "equity_cents": 1490000
+            },
+            {
+              "t": 64,
+              "equity_cents": 1508000
+            },
+            {
+              "t": 65,
+              "equity_cents": 1580000
+            },
+            {
+              "t": 66,
+              "equity_cents": 1562000
+            },
+            {
+              "t": 67,
+              "equity_cents": 1563500
+            },
+            {
+              "t": 68,
+              "equity_cents": 1503500
+            },
+            {
+              "t": 69,
+              "equity_cents": 1518500
+            },
+            {
+              "t": 70,
+              "equity_cents": 1460000
+            },
+            {
+              "t": 71,
+              "equity_cents": 1457000
+            },
+            {
+              "t": 72,
+              "equity_cents": 1379000
+            },
+            {
+              "t": 73,
+              "equity_cents": 1373000
+            },
+            {
+              "t": 74,
+              "equity_cents": 1337900
+            },
+            {
+              "t": 75,
+              "equity_cents": 1310600
+            },
+            {
+              "t": 76,
+              "equity_cents": 1274200
+            },
+            {
+              "t": 77,
+              "equity_cents": 1289800
+            },
+            {
+              "t": 78,
+              "equity_cents": 1233700
+            },
+            {
+              "t": 79,
+              "equity_cents": 1202900
+            },
+            {
+              "t": 80,
+              "equity_cents": 1212800
+            },
+            {
+              "t": 81,
+              "equity_cents": 1209200
+            },
+            {
+              "t": 82,
+              "equity_cents": 1159500
+            },
+            {
+              "t": 83,
+              "equity_cents": 1167200
+            },
+            {
+              "t": 84,
+              "equity_cents": 1163700
+            },
+            {
+              "t": 85,
+              "equity_cents": 1146200
+            },
+            {
+              "t": 86,
+              "equity_cents": 1143200
+            },
+            {
+              "t": 87,
+              "equity_cents": 1126700
+            },
+            {
+              "t": 88,
+              "equity_cents": 1090700
+            },
+            {
+              "t": 89,
+              "equity_cents": 1104200
+            },
+            {
+              "t": 90,
+              "equity_cents": 1093700
+            },
+            {
+              "t": 91,
+              "equity_cents": 1094300
+            },
+            {
+              "t": 92,
+              "equity_cents": 1092900
+            },
+            {
+              "t": 93,
+              "equity_cents": 1090500
+            },
+            {
+              "t": 94,
+              "equity_cents": 1089500
+            },
+            {
+              "t": 95,
+              "equity_cents": 1083400
+            },
+            {
+              "t": 96,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 97,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 98,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 99,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 100,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 101,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 102,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 103,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 104,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 105,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 106,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 107,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 108,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 109,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 110,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 111,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 112,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 113,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 114,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 115,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 116,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 117,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 118,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 119,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 120,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 121,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 122,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 123,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 124,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 125,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 126,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 127,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 128,
+              "equity_cents": 1084200
+            },
+            {
+              "t": 129,
+              "equity_cents": 1084200
+            }
+          ],
+          "is_current": true,
+          "rank": 5,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 10,
+            "momentum_threshold": 0.008
+          },
+          "metrics": {
+            "total_pnl_cents": 990900,
+            "realized_pnl_cents": 990900,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 16,
+            "sell_count": 8,
+            "win_rate": 1.0,
+            "final_position": 0,
+            "max_drawdown_cents": -592400
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 6,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 15,
+            "momentum_threshold": 0.003
+          },
+          "metrics": {
+            "total_pnl_cents": 990900,
+            "realized_pnl_cents": 990900,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 16,
+            "sell_count": 8,
+            "win_rate": 1.0,
+            "final_position": 0,
+            "max_drawdown_cents": -592400
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 7,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 15,
+            "momentum_threshold": 0.005
+          },
+          "metrics": {
+            "total_pnl_cents": 990900,
+            "realized_pnl_cents": 990900,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 16,
+            "sell_count": 8,
+            "win_rate": 1.0,
+            "final_position": 0,
+            "max_drawdown_cents": -592400
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 8,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 15,
+            "momentum_threshold": 0.008
+          },
+          "metrics": {
+            "total_pnl_cents": 990900,
+            "realized_pnl_cents": 990900,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 16,
+            "sell_count": 8,
+            "win_rate": 1.0,
+            "final_position": 0,
+            "max_drawdown_cents": -592400
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 9,
+          "is_winner": false
+        }
+      ]
+    },
+    {
+      "symbol": "AXON",
+      "strategy_type": "mean_reversion",
+      "ticks": 130,
+      "current_params": {
+        "lookback_samples": 15,
+        "deviation_threshold": 0.004
+      },
+      "winner_params": null,
+      "results": [
+        {
+          "params": {
+            "lookback_samples": 10,
+            "deviation_threshold": 0.002
+          },
+          "metrics": {
+            "total_pnl_cents": 0,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 0,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 0,
+            "max_drawdown_cents": 0
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 1,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 10,
+            "deviation_threshold": 0.004
+          },
+          "metrics": {
+            "total_pnl_cents": 0,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 0,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 0,
+            "max_drawdown_cents": 0
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 2,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 10,
+            "deviation_threshold": 0.006
+          },
+          "metrics": {
+            "total_pnl_cents": 0,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 0,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 0,
+            "max_drawdown_cents": 0
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 3,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 15,
+            "deviation_threshold": 0.002
+          },
+          "metrics": {
+            "total_pnl_cents": 0,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 0,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 0,
+            "max_drawdown_cents": 0
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 4,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 15,
+            "deviation_threshold": 0.004
+          },
+          "metrics": {
+            "total_pnl_cents": 0,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 0,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 0,
+            "max_drawdown_cents": 0
+          },
+          "equity_curve": [
+            {
+              "t": 0,
+              "equity_cents": 0
+            },
+            {
+              "t": 1,
+              "equity_cents": 0
+            },
+            {
+              "t": 2,
+              "equity_cents": 0
+            },
+            {
+              "t": 3,
+              "equity_cents": 0
+            },
+            {
+              "t": 4,
+              "equity_cents": 0
+            },
+            {
+              "t": 5,
+              "equity_cents": 0
+            },
+            {
+              "t": 6,
+              "equity_cents": 0
+            },
+            {
+              "t": 7,
+              "equity_cents": 0
+            },
+            {
+              "t": 8,
+              "equity_cents": 0
+            },
+            {
+              "t": 9,
+              "equity_cents": 0
+            },
+            {
+              "t": 10,
+              "equity_cents": 0
+            },
+            {
+              "t": 11,
+              "equity_cents": 0
+            },
+            {
+              "t": 12,
+              "equity_cents": 0
+            },
+            {
+              "t": 13,
+              "equity_cents": 0
+            },
+            {
+              "t": 14,
+              "equity_cents": 0
+            },
+            {
+              "t": 15,
+              "equity_cents": 0
+            },
+            {
+              "t": 16,
+              "equity_cents": 0
+            },
+            {
+              "t": 17,
+              "equity_cents": 0
+            },
+            {
+              "t": 18,
+              "equity_cents": 0
+            },
+            {
+              "t": 19,
+              "equity_cents": 0
+            },
+            {
+              "t": 20,
+              "equity_cents": 0
+            },
+            {
+              "t": 21,
+              "equity_cents": 0
+            },
+            {
+              "t": 22,
+              "equity_cents": 0
+            },
+            {
+              "t": 23,
+              "equity_cents": 0
+            },
+            {
+              "t": 24,
+              "equity_cents": 0
+            },
+            {
+              "t": 25,
+              "equity_cents": 0
+            },
+            {
+              "t": 26,
+              "equity_cents": 0
+            },
+            {
+              "t": 27,
+              "equity_cents": 0
+            },
+            {
+              "t": 28,
+              "equity_cents": 0
+            },
+            {
+              "t": 29,
+              "equity_cents": 0
+            },
+            {
+              "t": 30,
+              "equity_cents": 0
+            },
+            {
+              "t": 31,
+              "equity_cents": 0
+            },
+            {
+              "t": 32,
+              "equity_cents": 0
+            },
+            {
+              "t": 33,
+              "equity_cents": 0
+            },
+            {
+              "t": 34,
+              "equity_cents": 0
+            },
+            {
+              "t": 35,
+              "equity_cents": 0
+            },
+            {
+              "t": 36,
+              "equity_cents": 0
+            },
+            {
+              "t": 37,
+              "equity_cents": 0
+            },
+            {
+              "t": 38,
+              "equity_cents": 0
+            },
+            {
+              "t": 39,
+              "equity_cents": 0
+            },
+            {
+              "t": 40,
+              "equity_cents": 0
+            },
+            {
+              "t": 41,
+              "equity_cents": 0
+            },
+            {
+              "t": 42,
+              "equity_cents": 0
+            },
+            {
+              "t": 43,
+              "equity_cents": 0
+            },
+            {
+              "t": 44,
+              "equity_cents": 0
+            },
+            {
+              "t": 45,
+              "equity_cents": 0
+            },
+            {
+              "t": 46,
+              "equity_cents": 0
+            },
+            {
+              "t": 47,
+              "equity_cents": 0
+            },
+            {
+              "t": 48,
+              "equity_cents": 0
+            },
+            {
+              "t": 49,
+              "equity_cents": 0
+            },
+            {
+              "t": 50,
+              "equity_cents": 0
+            },
+            {
+              "t": 51,
+              "equity_cents": 0
+            },
+            {
+              "t": 52,
+              "equity_cents": 0
+            },
+            {
+              "t": 53,
+              "equity_cents": 0
+            },
+            {
+              "t": 54,
+              "equity_cents": 0
+            },
+            {
+              "t": 55,
+              "equity_cents": 0
+            },
+            {
+              "t": 56,
+              "equity_cents": 0
+            },
+            {
+              "t": 57,
+              "equity_cents": 0
+            },
+            {
+              "t": 58,
+              "equity_cents": 0
+            },
+            {
+              "t": 59,
+              "equity_cents": 0
+            },
+            {
+              "t": 60,
+              "equity_cents": 0
+            },
+            {
+              "t": 61,
+              "equity_cents": 0
+            },
+            {
+              "t": 62,
+              "equity_cents": 0
+            },
+            {
+              "t": 63,
+              "equity_cents": 0
+            },
+            {
+              "t": 64,
+              "equity_cents": 0
+            },
+            {
+              "t": 65,
+              "equity_cents": 0
+            },
+            {
+              "t": 66,
+              "equity_cents": 0
+            },
+            {
+              "t": 67,
+              "equity_cents": 0
+            },
+            {
+              "t": 68,
+              "equity_cents": 0
+            },
+            {
+              "t": 69,
+              "equity_cents": 0
+            },
+            {
+              "t": 70,
+              "equity_cents": 0
+            },
+            {
+              "t": 71,
+              "equity_cents": 0
+            },
+            {
+              "t": 72,
+              "equity_cents": 0
+            },
+            {
+              "t": 73,
+              "equity_cents": 0
+            },
+            {
+              "t": 74,
+              "equity_cents": 0
+            },
+            {
+              "t": 75,
+              "equity_cents": 0
+            },
+            {
+              "t": 76,
+              "equity_cents": 0
+            },
+            {
+              "t": 77,
+              "equity_cents": 0
+            },
+            {
+              "t": 78,
+              "equity_cents": 0
+            },
+            {
+              "t": 79,
+              "equity_cents": 0
+            },
+            {
+              "t": 80,
+              "equity_cents": 0
+            },
+            {
+              "t": 81,
+              "equity_cents": 0
+            },
+            {
+              "t": 82,
+              "equity_cents": 0
+            },
+            {
+              "t": 83,
+              "equity_cents": 0
+            },
+            {
+              "t": 84,
+              "equity_cents": 0
+            },
+            {
+              "t": 85,
+              "equity_cents": 0
+            },
+            {
+              "t": 86,
+              "equity_cents": 0
+            },
+            {
+              "t": 87,
+              "equity_cents": 0
+            },
+            {
+              "t": 88,
+              "equity_cents": 0
+            },
+            {
+              "t": 89,
+              "equity_cents": 0
+            },
+            {
+              "t": 90,
+              "equity_cents": 0
+            },
+            {
+              "t": 91,
+              "equity_cents": 0
+            },
+            {
+              "t": 92,
+              "equity_cents": 0
+            },
+            {
+              "t": 93,
+              "equity_cents": 0
+            },
+            {
+              "t": 94,
+              "equity_cents": 0
+            },
+            {
+              "t": 95,
+              "equity_cents": 0
+            },
+            {
+              "t": 96,
+              "equity_cents": 0
+            },
+            {
+              "t": 97,
+              "equity_cents": 0
+            },
+            {
+              "t": 98,
+              "equity_cents": 0
+            },
+            {
+              "t": 99,
+              "equity_cents": 0
+            },
+            {
+              "t": 100,
+              "equity_cents": 0
+            },
+            {
+              "t": 101,
+              "equity_cents": 0
+            },
+            {
+              "t": 102,
+              "equity_cents": 0
+            },
+            {
+              "t": 103,
+              "equity_cents": 0
+            },
+            {
+              "t": 104,
+              "equity_cents": 0
+            },
+            {
+              "t": 105,
+              "equity_cents": 0
+            },
+            {
+              "t": 106,
+              "equity_cents": 0
+            },
+            {
+              "t": 107,
+              "equity_cents": 0
+            },
+            {
+              "t": 108,
+              "equity_cents": 0
+            },
+            {
+              "t": 109,
+              "equity_cents": 0
+            },
+            {
+              "t": 110,
+              "equity_cents": 0
+            },
+            {
+              "t": 111,
+              "equity_cents": 0
+            },
+            {
+              "t": 112,
+              "equity_cents": 0
+            },
+            {
+              "t": 113,
+              "equity_cents": 0
+            },
+            {
+              "t": 114,
+              "equity_cents": 0
+            },
+            {
+              "t": 115,
+              "equity_cents": 0
+            },
+            {
+              "t": 116,
+              "equity_cents": 0
+            },
+            {
+              "t": 117,
+              "equity_cents": 0
+            },
+            {
+              "t": 118,
+              "equity_cents": 0
+            },
+            {
+              "t": 119,
+              "equity_cents": 0
+            },
+            {
+              "t": 120,
+              "equity_cents": 0
+            },
+            {
+              "t": 121,
+              "equity_cents": 0
+            },
+            {
+              "t": 122,
+              "equity_cents": 0
+            },
+            {
+              "t": 123,
+              "equity_cents": 0
+            },
+            {
+              "t": 124,
+              "equity_cents": 0
+            },
+            {
+              "t": 125,
+              "equity_cents": 0
+            },
+            {
+              "t": 126,
+              "equity_cents": 0
+            },
+            {
+              "t": 127,
+              "equity_cents": 0
+            },
+            {
+              "t": 128,
+              "equity_cents": 0
+            },
+            {
+              "t": 129,
+              "equity_cents": 0
+            }
+          ],
+          "is_current": true,
+          "rank": 5,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 15,
+            "deviation_threshold": 0.006
+          },
+          "metrics": {
+            "total_pnl_cents": 0,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 0,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 0,
+            "max_drawdown_cents": 0
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 6,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 20,
+            "deviation_threshold": 0.002
+          },
+          "metrics": {
+            "total_pnl_cents": 0,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 0,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 0,
+            "max_drawdown_cents": 0
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 7,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 20,
+            "deviation_threshold": 0.004
+          },
+          "metrics": {
+            "total_pnl_cents": 0,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 0,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 0,
+            "max_drawdown_cents": 0
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 8,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 20,
+            "deviation_threshold": 0.006
+          },
+          "metrics": {
+            "total_pnl_cents": 0,
+            "realized_pnl_cents": 0,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 0,
+            "sell_count": 0,
+            "win_rate": null,
+            "final_position": 0,
+            "max_drawdown_cents": 0
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 9,
+          "is_winner": false
+        }
+      ]
+    },
+    {
+      "symbol": "ELXR",
+      "strategy_type": "mean_reversion",
+      "ticks": 130,
+      "current_params": {
+        "lookback_samples": 15,
+        "deviation_threshold": 0.004
+      },
+      "winner_params": {
+        "lookback_samples": 20,
+        "deviation_threshold": 0.006
+      },
+      "results": [
+        {
+          "params": {
+            "lookback_samples": 20,
+            "deviation_threshold": 0.006
+          },
+          "metrics": {
+            "total_pnl_cents": 271300,
+            "realized_pnl_cents": 271300,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 24,
+            "sell_count": 12,
+            "win_rate": 1.0,
+            "final_position": 0,
+            "max_drawdown_cents": -55100
+          },
+          "equity_curve": [
+            {
+              "t": 0,
+              "equity_cents": 0
+            },
+            {
+              "t": 1,
+              "equity_cents": 0
+            },
+            {
+              "t": 2,
+              "equity_cents": 0
+            },
+            {
+              "t": 3,
+              "equity_cents": 0
+            },
+            {
+              "t": 4,
+              "equity_cents": 0
+            },
+            {
+              "t": 5,
+              "equity_cents": 0
+            },
+            {
+              "t": 6,
+              "equity_cents": 0
+            },
+            {
+              "t": 7,
+              "equity_cents": 0
+            },
+            {
+              "t": 8,
+              "equity_cents": 0
+            },
+            {
+              "t": 9,
+              "equity_cents": 0
+            },
+            {
+              "t": 10,
+              "equity_cents": 0
+            },
+            {
+              "t": 11,
+              "equity_cents": 0
+            },
+            {
+              "t": 12,
+              "equity_cents": 0
+            },
+            {
+              "t": 13,
+              "equity_cents": 0
+            },
+            {
+              "t": 14,
+              "equity_cents": 0
+            },
+            {
+              "t": 15,
+              "equity_cents": 0
+            },
+            {
+              "t": 16,
+              "equity_cents": 0
+            },
+            {
+              "t": 17,
+              "equity_cents": 0
+            },
+            {
+              "t": 18,
+              "equity_cents": 0
+            },
+            {
+              "t": 19,
+              "equity_cents": 0
+            },
+            {
+              "t": 20,
+              "equity_cents": 0
+            },
+            {
+              "t": 21,
+              "equity_cents": 0
+            },
+            {
+              "t": 22,
+              "equity_cents": 300
+            },
+            {
+              "t": 23,
+              "equity_cents": -7100
+            },
+            {
+              "t": 24,
+              "equity_cents": -18500
+            },
+            {
+              "t": 25,
+              "equity_cents": -11700
+            },
+            {
+              "t": 26,
+              "equity_cents": -36500
+            },
+            {
+              "t": 27,
+              "equity_cents": -30100
+            },
+            {
+              "t": 28,
+              "equity_cents": -20100
+            },
+            {
+              "t": 29,
+              "equity_cents": -30100
+            },
+            {
+              "t": 30,
+              "equity_cents": -26100
+            },
+            {
+              "t": 31,
+              "equity_cents": -22900
+            },
+            {
+              "t": 32,
+              "equity_cents": -3300
+            },
+            {
+              "t": 33,
+              "equity_cents": -5700
+            },
+            {
+              "t": 34,
+              "equity_cents": 6300
+            },
+            {
+              "t": 35,
+              "equity_cents": 11100
+            },
+            {
+              "t": 36,
+              "equity_cents": 30700
+            },
+            {
+              "t": 37,
+              "equity_cents": 47500
+            },
+            {
+              "t": 38,
+              "equity_cents": 73500
+            },
+            {
+              "t": 39,
+              "equity_cents": 85900
+            },
+            {
+              "t": 40,
+              "equity_cents": 85600
+            },
+            {
+              "t": 41,
+              "equity_cents": 87200
+            },
+            {
+              "t": 42,
+              "equity_cents": 93800
+            },
+            {
+              "t": 43,
+              "equity_cents": 93800
+            },
+            {
+              "t": 44,
+              "equity_cents": 93800
+            },
+            {
+              "t": 45,
+              "equity_cents": 93800
+            },
+            {
+              "t": 46,
+              "equity_cents": 93800
+            },
+            {
+              "t": 47,
+              "equity_cents": 93800
+            },
+            {
+              "t": 48,
+              "equity_cents": 93800
+            },
+            {
+              "t": 49,
+              "equity_cents": 93800
+            },
+            {
+              "t": 50,
+              "equity_cents": 93800
+            },
+            {
+              "t": 51,
+              "equity_cents": 93800
+            },
+            {
+              "t": 52,
+              "equity_cents": 93800
+            },
+            {
+              "t": 53,
+              "equity_cents": 93800
+            },
+            {
+              "t": 54,
+              "equity_cents": 93800
+            },
+            {
+              "t": 55,
+              "equity_cents": 93800
+            },
+            {
+              "t": 56,
+              "equity_cents": 93800
+            },
+            {
+              "t": 57,
+              "equity_cents": 93800
+            },
+            {
+              "t": 58,
+              "equity_cents": 93800
+            },
+            {
+              "t": 59,
+              "equity_cents": 94000
+            },
+            {
+              "t": 60,
+              "equity_cents": 78600
+            },
+            {
+              "t": 61,
+              "equity_cents": 77700
+            },
+            {
+              "t": 62,
+              "equity_cents": 66900
+            },
+            {
+              "t": 63,
+              "equity_cents": 64100
+            },
+            {
+              "t": 64,
+              "equity_cents": 38900
+            },
+            {
+              "t": 65,
+              "equity_cents": 50900
+            },
+            {
+              "t": 66,
+              "equity_cents": 42900
+            },
+            {
+              "t": 67,
+              "equity_cents": 42100
+            },
+            {
+              "t": 68,
+              "equity_cents": 51300
+            },
+            {
+              "t": 69,
+              "equity_cents": 52900
+            },
+            {
+              "t": 70,
+              "equity_cents": 63700
+            },
+            {
+              "t": 71,
+              "equity_cents": 79700
+            },
+            {
+              "t": 72,
+              "equity_cents": 82100
+            },
+            {
+              "t": 73,
+              "equity_cents": 113300
+            },
+            {
+              "t": 74,
+              "equity_cents": 104500
+            },
+            {
+              "t": 75,
+              "equity_cents": 123300
+            },
+            {
+              "t": 76,
+              "equity_cents": 148100
+            },
+            {
+              "t": 77,
+              "equity_cents": 165300
+            },
+            {
+              "t": 78,
+              "equity_cents": 174600
+            },
+            {
+              "t": 79,
+              "equity_cents": 175600
+            },
+            {
+              "t": 80,
+              "equity_cents": 179900
+            },
+            {
+              "t": 81,
+              "equity_cents": 179900
+            },
+            {
+              "t": 82,
+              "equity_cents": 179900
+            },
+            {
+              "t": 83,
+              "equity_cents": 179900
+            },
+            {
+              "t": 84,
+              "equity_cents": 179900
+            },
+            {
+              "t": 85,
+              "equity_cents": 179900
+            },
+            {
+              "t": 86,
+              "equity_cents": 179900
+            },
+            {
+              "t": 87,
+              "equity_cents": 179900
+            },
+            {
+              "t": 88,
+              "equity_cents": 179900
+            },
+            {
+              "t": 89,
+              "equity_cents": 179900
+            },
+            {
+              "t": 90,
+              "equity_cents": 179900
+            },
+            {
+              "t": 91,
+              "equity_cents": 179900
+            },
+            {
+              "t": 92,
+              "equity_cents": 179900
+            },
+            {
+              "t": 93,
+              "equity_cents": 179900
+            },
+            {
+              "t": 94,
+              "equity_cents": 179900
+            },
+            {
+              "t": 95,
+              "equity_cents": 179900
+            },
+            {
+              "t": 96,
+              "equity_cents": 179900
+            },
+            {
+              "t": 97,
+              "equity_cents": 172500
+            },
+            {
+              "t": 98,
+              "equity_cents": 170500
+            },
+            {
+              "t": 99,
+              "equity_cents": 159400
+            },
+            {
+              "t": 100,
+              "equity_cents": 157800
+            },
+            {
+              "t": 101,
+              "equity_cents": 151000
+            },
+            {
+              "t": 102,
+              "equity_cents": 134600
+            },
+            {
+              "t": 103,
+              "equity_cents": 145000
+            },
+            {
+              "t": 104,
+              "equity_cents": 128600
+            },
+            {
+              "t": 105,
+              "equity_cents": 142600
+            },
+            {
+              "t": 106,
+              "equity_cents": 141800
+            },
+            {
+              "t": 107,
+              "equity_cents": 150200
+            },
+            {
+              "t": 108,
+              "equity_cents": 159800
+            },
+            {
+              "t": 109,
+              "equity_cents": 169000
+            },
+            {
+              "t": 110,
+              "equity_cents": 187800
+            },
+            {
+              "t": 111,
+              "equity_cents": 195800
+            },
+            {
+              "t": 112,
+              "equity_cents": 208600
+            },
+            {
+              "t": 113,
+              "equity_cents": 216200
+            },
+            {
+              "t": 114,
+              "equity_cents": 222600
+            },
+            {
+              "t": 115,
+              "equity_cents": 243400
+            },
+            {
+              "t": 116,
+              "equity_cents": 258700
+            },
+            {
+              "t": 117,
+              "equity_cents": 265500
+            },
+            {
+              "t": 118,
+              "equity_cents": 271000
+            },
+            {
+              "t": 119,
+              "equity_cents": 271000
+            },
+            {
+              "t": 120,
+              "equity_cents": 271000
+            },
+            {
+              "t": 121,
+              "equity_cents": 271000
+            },
+            {
+              "t": 122,
+              "equity_cents": 271000
+            },
+            {
+              "t": 123,
+              "equity_cents": 271000
+            },
+            {
+              "t": 124,
+              "equity_cents": 271000
+            },
+            {
+              "t": 125,
+              "equity_cents": 271000
+            },
+            {
+              "t": 126,
+              "equity_cents": 271000
+            },
+            {
+              "t": 127,
+              "equity_cents": 271000
+            },
+            {
+              "t": 128,
+              "equity_cents": 271000
+            },
+            {
+              "t": 129,
+              "equity_cents": 271000
+            }
+          ],
+          "is_current": false,
+          "rank": 1,
+          "is_winner": true
+        },
+        {
+          "params": {
+            "lookback_samples": 10,
+            "deviation_threshold": 0.006
+          },
+          "metrics": {
+            "total_pnl_cents": 218100,
+            "realized_pnl_cents": 218100,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 24,
+            "sell_count": 12,
+            "win_rate": 1.0,
+            "final_position": 0,
+            "max_drawdown_cents": -66500
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 2,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 20,
+            "deviation_threshold": 0.004
+          },
+          "metrics": {
+            "total_pnl_cents": 160600,
+            "realized_pnl_cents": 160600,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 24,
+            "sell_count": 12,
+            "win_rate": 1.0,
+            "final_position": 0,
+            "max_drawdown_cents": -80600
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 3,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 15,
+            "deviation_threshold": 0.006
+          },
+          "metrics": {
+            "total_pnl_cents": 157800,
+            "realized_pnl_cents": 157800,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 24,
+            "sell_count": 12,
+            "win_rate": 1.0,
+            "final_position": 0,
+            "max_drawdown_cents": -66500
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 4,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 20,
+            "deviation_threshold": 0.002
+          },
+          "metrics": {
+            "total_pnl_cents": 96400,
+            "realized_pnl_cents": 96400,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 24,
+            "sell_count": 12,
+            "win_rate": 0.8333333333333334,
+            "final_position": 0,
+            "max_drawdown_cents": -92400
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 5,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 15,
+            "deviation_threshold": 0.004
+          },
+          "metrics": {
+            "total_pnl_cents": 48400,
+            "realized_pnl_cents": 48400,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 24,
+            "sell_count": 12,
+            "win_rate": 0.75,
+            "final_position": 0,
+            "max_drawdown_cents": -97200
+          },
+          "equity_curve": [
+            {
+              "t": 0,
+              "equity_cents": 0
+            },
+            {
+              "t": 1,
+              "equity_cents": 0
+            },
+            {
+              "t": 2,
+              "equity_cents": 0
+            },
+            {
+              "t": 3,
+              "equity_cents": 0
+            },
+            {
+              "t": 4,
+              "equity_cents": 0
+            },
+            {
+              "t": 5,
+              "equity_cents": 0
+            },
+            {
+              "t": 6,
+              "equity_cents": 0
+            },
+            {
+              "t": 7,
+              "equity_cents": 0
+            },
+            {
+              "t": 8,
+              "equity_cents": 0
+            },
+            {
+              "t": 9,
+              "equity_cents": 0
+            },
+            {
+              "t": 10,
+              "equity_cents": 0
+            },
+            {
+              "t": 11,
+              "equity_cents": 0
+            },
+            {
+              "t": 12,
+              "equity_cents": 0
+            },
+            {
+              "t": 13,
+              "equity_cents": 0
+            },
+            {
+              "t": 14,
+              "equity_cents": 0
+            },
+            {
+              "t": 15,
+              "equity_cents": 0
+            },
+            {
+              "t": 16,
+              "equity_cents": 0
+            },
+            {
+              "t": 17,
+              "equity_cents": 0
+            },
+            {
+              "t": 18,
+              "equity_cents": -5500
+            },
+            {
+              "t": 19,
+              "equity_cents": -3900
+            },
+            {
+              "t": 20,
+              "equity_cents": -28800
+            },
+            {
+              "t": 21,
+              "equity_cents": -50400
+            },
+            {
+              "t": 22,
+              "equity_cents": -49200
+            },
+            {
+              "t": 23,
+              "equity_cents": -64000
+            },
+            {
+              "t": 24,
+              "equity_cents": -79200
+            },
+            {
+              "t": 25,
+              "equity_cents": -72400
+            },
+            {
+              "t": 26,
+              "equity_cents": -97200
+            },
+            {
+              "t": 27,
+              "equity_cents": -90800
+            },
+            {
+              "t": 28,
+              "equity_cents": -80800
+            },
+            {
+              "t": 29,
+              "equity_cents": -90800
+            },
+            {
+              "t": 30,
+              "equity_cents": -86800
+            },
+            {
+              "t": 31,
+              "equity_cents": -83600
+            },
+            {
+              "t": 32,
+              "equity_cents": -64000
+            },
+            {
+              "t": 33,
+              "equity_cents": -66400
+            },
+            {
+              "t": 34,
+              "equity_cents": -54400
+            },
+            {
+              "t": 35,
+              "equity_cents": -49600
+            },
+            {
+              "t": 36,
+              "equity_cents": -30000
+            },
+            {
+              "t": 37,
+              "equity_cents": -13200
+            },
+            {
+              "t": 38,
+              "equity_cents": 6300
+            },
+            {
+              "t": 39,
+              "equity_cents": 12500
+            },
+            {
+              "t": 40,
+              "equity_cents": 12400
+            },
+            {
+              "t": 41,
+              "equity_cents": 12400
+            },
+            {
+              "t": 42,
+              "equity_cents": 12400
+            },
+            {
+              "t": 43,
+              "equity_cents": 12400
+            },
+            {
+              "t": 44,
+              "equity_cents": 12400
+            },
+            {
+              "t": 45,
+              "equity_cents": 12400
+            },
+            {
+              "t": 46,
+              "equity_cents": 12400
+            },
+            {
+              "t": 47,
+              "equity_cents": 12400
+            },
+            {
+              "t": 48,
+              "equity_cents": 12400
+            },
+            {
+              "t": 49,
+              "equity_cents": 12400
+            },
+            {
+              "t": 50,
+              "equity_cents": 12400
+            },
+            {
+              "t": 51,
+              "equity_cents": 12400
+            },
+            {
+              "t": 52,
+              "equity_cents": 12400
+            },
+            {
+              "t": 53,
+              "equity_cents": 12400
+            },
+            {
+              "t": 54,
+              "equity_cents": 12400
+            },
+            {
+              "t": 55,
+              "equity_cents": 12400
+            },
+            {
+              "t": 56,
+              "equity_cents": 8200
+            },
+            {
+              "t": 57,
+              "equity_cents": 600
+            },
+            {
+              "t": 58,
+              "equity_cents": -9900
+            },
+            {
+              "t": 59,
+              "equity_cents": -9100
+            },
+            {
+              "t": 60,
+              "equity_cents": -39900
+            },
+            {
+              "t": 61,
+              "equity_cents": -41100
+            },
+            {
+              "t": 62,
+              "equity_cents": -51900
+            },
+            {
+              "t": 63,
+              "equity_cents": -54700
+            },
+            {
+              "t": 64,
+              "equity_cents": -79900
+            },
+            {
+              "t": 65,
+              "equity_cents": -67900
+            },
+            {
+              "t": 66,
+              "equity_cents": -75900
+            },
+            {
+              "t": 67,
+              "equity_cents": -76700
+            },
+            {
+              "t": 68,
+              "equity_cents": -67500
+            },
+            {
+              "t": 69,
+              "equity_cents": -65900
+            },
+            {
+              "t": 70,
+              "equity_cents": -55100
+            },
+            {
+              "t": 71,
+              "equity_cents": -39100
+            },
+            {
+              "t": 72,
+              "equity_cents": -36700
+            },
+            {
+              "t": 73,
+              "equity_cents": -5500
+            },
+            {
+              "t": 74,
+              "equity_cents": -14300
+            },
+            {
+              "t": 75,
+              "equity_cents": 4500
+            },
+            {
+              "t": 76,
+              "equity_cents": 23100
+            },
+            {
+              "t": 77,
+              "equity_cents": 31700
+            },
+            {
+              "t": 78,
+              "equity_cents": 34800
+            },
+            {
+              "t": 79,
+              "equity_cents": 34800
+            },
+            {
+              "t": 80,
+              "equity_cents": 34800
+            },
+            {
+              "t": 81,
+              "equity_cents": 34800
+            },
+            {
+              "t": 82,
+              "equity_cents": 34800
+            },
+            {
+              "t": 83,
+              "equity_cents": 34800
+            },
+            {
+              "t": 84,
+              "equity_cents": 34800
+            },
+            {
+              "t": 85,
+              "equity_cents": 34800
+            },
+            {
+              "t": 86,
+              "equity_cents": 34800
+            },
+            {
+              "t": 87,
+              "equity_cents": 34800
+            },
+            {
+              "t": 88,
+              "equity_cents": 34800
+            },
+            {
+              "t": 89,
+              "equity_cents": 34800
+            },
+            {
+              "t": 90,
+              "equity_cents": 34800
+            },
+            {
+              "t": 91,
+              "equity_cents": 34800
+            },
+            {
+              "t": 92,
+              "equity_cents": 34800
+            },
+            {
+              "t": 93,
+              "equity_cents": 34800
+            },
+            {
+              "t": 94,
+              "equity_cents": 34800
+            },
+            {
+              "t": 95,
+              "equity_cents": 32200
+            },
+            {
+              "t": 96,
+              "equity_cents": 26000
+            },
+            {
+              "t": 97,
+              "equity_cents": 3800
+            },
+            {
+              "t": 98,
+              "equity_cents": -200
+            },
+            {
+              "t": 99,
+              "equity_cents": -15000
+            },
+            {
+              "t": 100,
+              "equity_cents": -16600
+            },
+            {
+              "t": 101,
+              "equity_cents": -23400
+            },
+            {
+              "t": 102,
+              "equity_cents": -39800
+            },
+            {
+              "t": 103,
+              "equity_cents": -29400
+            },
+            {
+              "t": 104,
+              "equity_cents": -45800
+            },
+            {
+              "t": 105,
+              "equity_cents": -31800
+            },
+            {
+              "t": 106,
+              "equity_cents": -32600
+            },
+            {
+              "t": 107,
+              "equity_cents": -24200
+            },
+            {
+              "t": 108,
+              "equity_cents": -14600
+            },
+            {
+              "t": 109,
+              "equity_cents": -5400
+            },
+            {
+              "t": 110,
+              "equity_cents": 13400
+            },
+            {
+              "t": 111,
+              "equity_cents": 21400
+            },
+            {
+              "t": 112,
+              "equity_cents": 34200
+            },
+            {
+              "t": 113,
+              "equity_cents": 39900
+            },
+            {
+              "t": 114,
+              "equity_cents": 43100
+            },
+            {
+              "t": 115,
+              "equity_cents": 48300
+            },
+            {
+              "t": 116,
+              "equity_cents": 48300
+            },
+            {
+              "t": 117,
+              "equity_cents": 48300
+            },
+            {
+              "t": 118,
+              "equity_cents": 48300
+            },
+            {
+              "t": 119,
+              "equity_cents": 48300
+            },
+            {
+              "t": 120,
+              "equity_cents": 48300
+            },
+            {
+              "t": 121,
+              "equity_cents": 48300
+            },
+            {
+              "t": 122,
+              "equity_cents": 48300
+            },
+            {
+              "t": 123,
+              "equity_cents": 48300
+            },
+            {
+              "t": 124,
+              "equity_cents": 48300
+            },
+            {
+              "t": 125,
+              "equity_cents": 48300
+            },
+            {
+              "t": 126,
+              "equity_cents": 48300
+            },
+            {
+              "t": 127,
+              "equity_cents": 48300
+            },
+            {
+              "t": 128,
+              "equity_cents": 48300
+            },
+            {
+              "t": 129,
+              "equity_cents": 48300
+            }
+          ],
+          "is_current": true,
+          "rank": 6,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 10,
+            "deviation_threshold": 0.004
+          },
+          "metrics": {
+            "total_pnl_cents": 6500,
+            "realized_pnl_cents": 6500,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 24,
+            "sell_count": 12,
+            "win_rate": 0.5,
+            "final_position": 0,
+            "max_drawdown_cents": -110400
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 7,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 15,
+            "deviation_threshold": 0.002
+          },
+          "metrics": {
+            "total_pnl_cents": -37900,
+            "realized_pnl_cents": -37900,
+            "unrealized_pnl_cents": 0,
+            "trade_count": 24,
+            "sell_count": 12,
+            "win_rate": 0.3333333333333333,
+            "final_position": 0,
+            "max_drawdown_cents": -124500
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 8,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 10,
+            "deviation_threshold": 0.002
+          },
+          "metrics": {
+            "total_pnl_cents": -144100,
+            "realized_pnl_cents": -140100,
+            "unrealized_pnl_cents": -4000,
+            "trade_count": 26,
+            "sell_count": 12,
+            "win_rate": 0.08333333333333333,
+            "final_position": 200,
+            "max_drawdown_cents": -213600
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 9,
+          "is_winner": false
+        }
+      ]
+    },
+    {
+      "symbol": "DRFT",
+      "strategy_type": "momentum",
+      "ticks": 130,
+      "current_params": {
+        "lookback_samples": 10,
+        "momentum_threshold": 0.005
+      },
+      "winner_params": {
+        "lookback_samples": 5,
+        "momentum_threshold": 0.008
+      },
+      "results": [
+        {
+          "params": {
+            "lookback_samples": 5,
+            "momentum_threshold": 0.008
+          },
+          "metrics": {
+            "total_pnl_cents": -58200,
+            "realized_pnl_cents": -60600,
+            "unrealized_pnl_cents": 2400,
+            "trade_count": 6,
+            "sell_count": 1,
+            "win_rate": 0.0,
+            "final_position": 800,
+            "max_drawdown_cents": -74200
+          },
+          "equity_curve": [
+            {
+              "t": 0,
+              "equity_cents": 0
+            },
+            {
+              "t": 1,
+              "equity_cents": 0
+            },
+            {
+              "t": 2,
+              "equity_cents": 0
+            },
+            {
+              "t": 3,
+              "equity_cents": 0
+            },
+            {
+              "t": 4,
+              "equity_cents": 0
+            },
+            {
+              "t": 5,
+              "equity_cents": 0
+            },
+            {
+              "t": 6,
+              "equity_cents": 0
+            },
+            {
+              "t": 7,
+              "equity_cents": 0
+            },
+            {
+              "t": 8,
+              "equity_cents": 0
+            },
+            {
+              "t": 9,
+              "equity_cents": 0
+            },
+            {
+              "t": 10,
+              "equity_cents": 0
+            },
+            {
+              "t": 11,
+              "equity_cents": 0
+            },
+            {
+              "t": 12,
+              "equity_cents": 0
+            },
+            {
+              "t": 13,
+              "equity_cents": 0
+            },
+            {
+              "t": 14,
+              "equity_cents": 0
+            },
+            {
+              "t": 15,
+              "equity_cents": 0
+            },
+            {
+              "t": 16,
+              "equity_cents": 0
+            },
+            {
+              "t": 17,
+              "equity_cents": 0
+            },
+            {
+              "t": 18,
+              "equity_cents": 0
+            },
+            {
+              "t": 19,
+              "equity_cents": 0
+            },
+            {
+              "t": 20,
+              "equity_cents": 0
+            },
+            {
+              "t": 21,
+              "equity_cents": 0
+            },
+            {
+              "t": 22,
+              "equity_cents": 0
+            },
+            {
+              "t": 23,
+              "equity_cents": 0
+            },
+            {
+              "t": 24,
+              "equity_cents": 0
+            },
+            {
+              "t": 25,
+              "equity_cents": 0
+            },
+            {
+              "t": 26,
+              "equity_cents": 0
+            },
+            {
+              "t": 27,
+              "equity_cents": 0
+            },
+            {
+              "t": 28,
+              "equity_cents": 0
+            },
+            {
+              "t": 29,
+              "equity_cents": 0
+            },
+            {
+              "t": 30,
+              "equity_cents": 0
+            },
+            {
+              "t": 31,
+              "equity_cents": 0
+            },
+            {
+              "t": 32,
+              "equity_cents": 0
+            },
+            {
+              "t": 33,
+              "equity_cents": 0
+            },
+            {
+              "t": 34,
+              "equity_cents": 0
+            },
+            {
+              "t": 35,
+              "equity_cents": 0
+            },
+            {
+              "t": 36,
+              "equity_cents": 0
+            },
+            {
+              "t": 37,
+              "equity_cents": 0
+            },
+            {
+              "t": 38,
+              "equity_cents": 0
+            },
+            {
+              "t": 39,
+              "equity_cents": 0
+            },
+            {
+              "t": 40,
+              "equity_cents": 0
+            },
+            {
+              "t": 41,
+              "equity_cents": 0
+            },
+            {
+              "t": 42,
+              "equity_cents": 0
+            },
+            {
+              "t": 43,
+              "equity_cents": 0
+            },
+            {
+              "t": 44,
+              "equity_cents": 800
+            },
+            {
+              "t": 45,
+              "equity_cents": 2200
+            },
+            {
+              "t": 46,
+              "equity_cents": -1200
+            },
+            {
+              "t": 47,
+              "equity_cents": -2400
+            },
+            {
+              "t": 48,
+              "equity_cents": -400
+            },
+            {
+              "t": 49,
+              "equity_cents": -2400
+            },
+            {
+              "t": 50,
+              "equity_cents": 4200
+            },
+            {
+              "t": 51,
+              "equity_cents": 2600
+            },
+            {
+              "t": 52,
+              "equity_cents": 0
+            },
+            {
+              "t": 53,
+              "equity_cents": -1400
+            },
+            {
+              "t": 54,
+              "equity_cents": -600
+            },
+            {
+              "t": 55,
+              "equity_cents": -59000
+            },
+            {
+              "t": 56,
+              "equity_cents": -64600
+            },
+            {
+              "t": 57,
+              "equity_cents": -60600
+            },
+            {
+              "t": 58,
+              "equity_cents": -60600
+            },
+            {
+              "t": 59,
+              "equity_cents": -60600
+            },
+            {
+              "t": 60,
+              "equity_cents": -60600
+            },
+            {
+              "t": 61,
+              "equity_cents": -60600
+            },
+            {
+              "t": 62,
+              "equity_cents": -60600
+            },
+            {
+              "t": 63,
+              "equity_cents": -60600
+            },
+            {
+              "t": 64,
+              "equity_cents": -60600
+            },
+            {
+              "t": 65,
+              "equity_cents": -60600
+            },
+            {
+              "t": 66,
+              "equity_cents": -60600
+            },
+            {
+              "t": 67,
+              "equity_cents": -60600
+            },
+            {
+              "t": 68,
+              "equity_cents": -60600
+            },
+            {
+              "t": 69,
+              "equity_cents": -60600
+            },
+            {
+              "t": 70,
+              "equity_cents": -60600
+            },
+            {
+              "t": 71,
+              "equity_cents": -60600
+            },
+            {
+              "t": 72,
+              "equity_cents": -60600
+            },
+            {
+              "t": 73,
+              "equity_cents": -60600
+            },
+            {
+              "t": 74,
+              "equity_cents": -60600
+            },
+            {
+              "t": 75,
+              "equity_cents": -60600
+            },
+            {
+              "t": 76,
+              "equity_cents": -60600
+            },
+            {
+              "t": 77,
+              "equity_cents": -60600
+            },
+            {
+              "t": 78,
+              "equity_cents": -60600
+            },
+            {
+              "t": 79,
+              "equity_cents": -60600
+            },
+            {
+              "t": 80,
+              "equity_cents": -60600
+            },
+            {
+              "t": 81,
+              "equity_cents": -60600
+            },
+            {
+              "t": 82,
+              "equity_cents": -60600
+            },
+            {
+              "t": 83,
+              "equity_cents": -60600
+            },
+            {
+              "t": 84,
+              "equity_cents": -60600
+            },
+            {
+              "t": 85,
+              "equity_cents": -60600
+            },
+            {
+              "t": 86,
+              "equity_cents": -60600
+            },
+            {
+              "t": 87,
+              "equity_cents": -60600
+            },
+            {
+              "t": 88,
+              "equity_cents": -60600
+            },
+            {
+              "t": 89,
+              "equity_cents": -60600
+            },
+            {
+              "t": 90,
+              "equity_cents": -60600
+            },
+            {
+              "t": 91,
+              "equity_cents": -60600
+            },
+            {
+              "t": 92,
+              "equity_cents": -60600
+            },
+            {
+              "t": 93,
+              "equity_cents": -60600
+            },
+            {
+              "t": 94,
+              "equity_cents": -60600
+            },
+            {
+              "t": 95,
+              "equity_cents": -60600
+            },
+            {
+              "t": 96,
+              "equity_cents": -60600
+            },
+            {
+              "t": 97,
+              "equity_cents": -60600
+            },
+            {
+              "t": 98,
+              "equity_cents": -60600
+            },
+            {
+              "t": 99,
+              "equity_cents": -60600
+            },
+            {
+              "t": 100,
+              "equity_cents": -60600
+            },
+            {
+              "t": 101,
+              "equity_cents": -60600
+            },
+            {
+              "t": 102,
+              "equity_cents": -61000
+            },
+            {
+              "t": 103,
+              "equity_cents": -60600
+            },
+            {
+              "t": 104,
+              "equity_cents": -66000
+            },
+            {
+              "t": 105,
+              "equity_cents": -58800
+            },
+            {
+              "t": 106,
+              "equity_cents": -62800
+            },
+            {
+              "t": 107,
+              "equity_cents": -62800
+            },
+            {
+              "t": 108,
+              "equity_cents": -63600
+            },
+            {
+              "t": 109,
+              "equity_cents": -62000
+            },
+            {
+              "t": 110,
+              "equity_cents": -54800
+            },
+            {
+              "t": 111,
+              "equity_cents": -65200
+            },
+            {
+              "t": 112,
+              "equity_cents": -52400
+            },
+            {
+              "t": 113,
+              "equity_cents": -68400
+            },
+            {
+              "t": 114,
+              "equity_cents": -61200
+            },
+            {
+              "t": 115,
+              "equity_cents": -55600
+            },
+            {
+              "t": 116,
+              "equity_cents": -56400
+            },
+            {
+              "t": 117,
+              "equity_cents": -58800
+            },
+            {
+              "t": 118,
+              "equity_cents": -66800
+            },
+            {
+              "t": 119,
+              "equity_cents": -58800
+            },
+            {
+              "t": 120,
+              "equity_cents": -62800
+            },
+            {
+              "t": 121,
+              "equity_cents": -57200
+            },
+            {
+              "t": 122,
+              "equity_cents": -66000
+            },
+            {
+              "t": 123,
+              "equity_cents": -64400
+            },
+            {
+              "t": 124,
+              "equity_cents": -70000
+            },
+            {
+              "t": 125,
+              "equity_cents": -58800
+            },
+            {
+              "t": 126,
+              "equity_cents": -58000
+            },
+            {
+              "t": 127,
+              "equity_cents": -60400
+            },
+            {
+              "t": 128,
+              "equity_cents": -54800
+            },
+            {
+              "t": 129,
+              "equity_cents": -58000
+            }
+          ],
+          "is_current": false,
+          "rank": 1,
+          "is_winner": true
+        },
+        {
+          "params": {
+            "lookback_samples": 5,
+            "momentum_threshold": 0.003
+          },
+          "metrics": {
+            "total_pnl_cents": -111000,
+            "realized_pnl_cents": -154000,
+            "unrealized_pnl_cents": 43000,
+            "trade_count": 21,
+            "sell_count": 8,
+            "win_rate": 0.375,
+            "final_position": 1000,
+            "max_drawdown_cents": -168800
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 2,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 5,
+            "momentum_threshold": 0.005
+          },
+          "metrics": {
+            "total_pnl_cents": -120200,
+            "realized_pnl_cents": -122600,
+            "unrealized_pnl_cents": 2400,
+            "trade_count": 8,
+            "sell_count": 2,
+            "win_rate": 0.0,
+            "final_position": 800,
+            "max_drawdown_cents": -136400
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 3,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 10,
+            "momentum_threshold": 0.005
+          },
+          "metrics": {
+            "total_pnl_cents": -226600,
+            "realized_pnl_cents": -232600,
+            "unrealized_pnl_cents": 6000,
+            "trade_count": 16,
+            "sell_count": 4,
+            "win_rate": 0.0,
+            "final_position": 1500,
+            "max_drawdown_cents": -275200
+          },
+          "equity_curve": [
+            {
+              "t": 0,
+              "equity_cents": 0
+            },
+            {
+              "t": 1,
+              "equity_cents": 0
+            },
+            {
+              "t": 2,
+              "equity_cents": 0
+            },
+            {
+              "t": 3,
+              "equity_cents": 0
+            },
+            {
+              "t": 4,
+              "equity_cents": 0
+            },
+            {
+              "t": 5,
+              "equity_cents": 0
+            },
+            {
+              "t": 6,
+              "equity_cents": 0
+            },
+            {
+              "t": 7,
+              "equity_cents": 0
+            },
+            {
+              "t": 8,
+              "equity_cents": 0
+            },
+            {
+              "t": 9,
+              "equity_cents": 0
+            },
+            {
+              "t": 10,
+              "equity_cents": 0
+            },
+            {
+              "t": 11,
+              "equity_cents": 0
+            },
+            {
+              "t": 12,
+              "equity_cents": 0
+            },
+            {
+              "t": 13,
+              "equity_cents": 0
+            },
+            {
+              "t": 14,
+              "equity_cents": 0
+            },
+            {
+              "t": 15,
+              "equity_cents": 0
+            },
+            {
+              "t": 16,
+              "equity_cents": 0
+            },
+            {
+              "t": 17,
+              "equity_cents": 0
+            },
+            {
+              "t": 18,
+              "equity_cents": 0
+            },
+            {
+              "t": 19,
+              "equity_cents": 0
+            },
+            {
+              "t": 20,
+              "equity_cents": 0
+            },
+            {
+              "t": 21,
+              "equity_cents": 0
+            },
+            {
+              "t": 22,
+              "equity_cents": 0
+            },
+            {
+              "t": 23,
+              "equity_cents": 0
+            },
+            {
+              "t": 24,
+              "equity_cents": 0
+            },
+            {
+              "t": 25,
+              "equity_cents": 0
+            },
+            {
+              "t": 26,
+              "equity_cents": 0
+            },
+            {
+              "t": 27,
+              "equity_cents": 0
+            },
+            {
+              "t": 28,
+              "equity_cents": 0
+            },
+            {
+              "t": 29,
+              "equity_cents": 0
+            },
+            {
+              "t": 30,
+              "equity_cents": 0
+            },
+            {
+              "t": 31,
+              "equity_cents": 0
+            },
+            {
+              "t": 32,
+              "equity_cents": 0
+            },
+            {
+              "t": 33,
+              "equity_cents": 0
+            },
+            {
+              "t": 34,
+              "equity_cents": 0
+            },
+            {
+              "t": 35,
+              "equity_cents": 0
+            },
+            {
+              "t": 36,
+              "equity_cents": 0
+            },
+            {
+              "t": 37,
+              "equity_cents": 0
+            },
+            {
+              "t": 38,
+              "equity_cents": 0
+            },
+            {
+              "t": 39,
+              "equity_cents": 0
+            },
+            {
+              "t": 40,
+              "equity_cents": 0
+            },
+            {
+              "t": 41,
+              "equity_cents": 0
+            },
+            {
+              "t": 42,
+              "equity_cents": 0
+            },
+            {
+              "t": 43,
+              "equity_cents": 0
+            },
+            {
+              "t": 44,
+              "equity_cents": 800
+            },
+            {
+              "t": 45,
+              "equity_cents": 2200
+            },
+            {
+              "t": 46,
+              "equity_cents": -1200
+            },
+            {
+              "t": 47,
+              "equity_cents": -3600
+            },
+            {
+              "t": 48,
+              "equity_cents": 2400
+            },
+            {
+              "t": 49,
+              "equity_cents": -3600
+            },
+            {
+              "t": 50,
+              "equity_cents": 22800
+            },
+            {
+              "t": 51,
+              "equity_cents": 16400
+            },
+            {
+              "t": 52,
+              "equity_cents": 6000
+            },
+            {
+              "t": 53,
+              "equity_cents": 400
+            },
+            {
+              "t": 54,
+              "equity_cents": 3600
+            },
+            {
+              "t": 55,
+              "equity_cents": -230000
+            },
+            {
+              "t": 56,
+              "equity_cents": -252400
+            },
+            {
+              "t": 57,
+              "equity_cents": -236400
+            },
+            {
+              "t": 58,
+              "equity_cents": -238800
+            },
+            {
+              "t": 59,
+              "equity_cents": -233400
+            },
+            {
+              "t": 60,
+              "equity_cents": -235800
+            },
+            {
+              "t": 61,
+              "equity_cents": -242600
+            },
+            {
+              "t": 62,
+              "equity_cents": -235400
+            },
+            {
+              "t": 63,
+              "equity_cents": -233000
+            },
+            {
+              "t": 64,
+              "equity_cents": -233000
+            },
+            {
+              "t": 65,
+              "equity_cents": -233000
+            },
+            {
+              "t": 66,
+              "equity_cents": -233000
+            },
+            {
+              "t": 67,
+              "equity_cents": -233000
+            },
+            {
+              "t": 68,
+              "equity_cents": -233000
+            },
+            {
+              "t": 69,
+              "equity_cents": -233000
+            },
+            {
+              "t": 70,
+              "equity_cents": -233000
+            },
+            {
+              "t": 71,
+              "equity_cents": -233000
+            },
+            {
+              "t": 72,
+              "equity_cents": -233000
+            },
+            {
+              "t": 73,
+              "equity_cents": -233000
+            },
+            {
+              "t": 74,
+              "equity_cents": -233000
+            },
+            {
+              "t": 75,
+              "equity_cents": -233000
+            },
+            {
+              "t": 76,
+              "equity_cents": -233000
+            },
+            {
+              "t": 77,
+              "equity_cents": -233000
+            },
+            {
+              "t": 78,
+              "equity_cents": -233000
+            },
+            {
+              "t": 79,
+              "equity_cents": -233000
+            },
+            {
+              "t": 80,
+              "equity_cents": -233000
+            },
+            {
+              "t": 81,
+              "equity_cents": -233000
+            },
+            {
+              "t": 82,
+              "equity_cents": -233000
+            },
+            {
+              "t": 83,
+              "equity_cents": -233000
+            },
+            {
+              "t": 84,
+              "equity_cents": -233000
+            },
+            {
+              "t": 85,
+              "equity_cents": -233000
+            },
+            {
+              "t": 86,
+              "equity_cents": -233000
+            },
+            {
+              "t": 87,
+              "equity_cents": -233000
+            },
+            {
+              "t": 88,
+              "equity_cents": -233000
+            },
+            {
+              "t": 89,
+              "equity_cents": -233000
+            },
+            {
+              "t": 90,
+              "equity_cents": -233000
+            },
+            {
+              "t": 91,
+              "equity_cents": -233000
+            },
+            {
+              "t": 92,
+              "equity_cents": -233000
+            },
+            {
+              "t": 93,
+              "equity_cents": -233000
+            },
+            {
+              "t": 94,
+              "equity_cents": -233000
+            },
+            {
+              "t": 95,
+              "equity_cents": -233000
+            },
+            {
+              "t": 96,
+              "equity_cents": -233000
+            },
+            {
+              "t": 97,
+              "equity_cents": -233000
+            },
+            {
+              "t": 98,
+              "equity_cents": -233000
+            },
+            {
+              "t": 99,
+              "equity_cents": -233000
+            },
+            {
+              "t": 100,
+              "equity_cents": -233000
+            },
+            {
+              "t": 101,
+              "equity_cents": -233000
+            },
+            {
+              "t": 102,
+              "equity_cents": -233400
+            },
+            {
+              "t": 103,
+              "equity_cents": -233000
+            },
+            {
+              "t": 104,
+              "equity_cents": -238400
+            },
+            {
+              "t": 105,
+              "equity_cents": -231200
+            },
+            {
+              "t": 106,
+              "equity_cents": -235200
+            },
+            {
+              "t": 107,
+              "equity_cents": -235200
+            },
+            {
+              "t": 108,
+              "equity_cents": -236400
+            },
+            {
+              "t": 109,
+              "equity_cents": -233600
+            },
+            {
+              "t": 110,
+              "equity_cents": -220100
+            },
+            {
+              "t": 111,
+              "equity_cents": -239600
+            },
+            {
+              "t": 112,
+              "equity_cents": -215600
+            },
+            {
+              "t": 113,
+              "equity_cents": -245600
+            },
+            {
+              "t": 114,
+              "equity_cents": -232100
+            },
+            {
+              "t": 115,
+              "equity_cents": -221600
+            },
+            {
+              "t": 116,
+              "equity_cents": -223100
+            },
+            {
+              "t": 117,
+              "equity_cents": -227600
+            },
+            {
+              "t": 118,
+              "equity_cents": -242600
+            },
+            {
+              "t": 119,
+              "equity_cents": -227600
+            },
+            {
+              "t": 120,
+              "equity_cents": -235100
+            },
+            {
+              "t": 121,
+              "equity_cents": -224600
+            },
+            {
+              "t": 122,
+              "equity_cents": -241100
+            },
+            {
+              "t": 123,
+              "equity_cents": -238100
+            },
+            {
+              "t": 124,
+              "equity_cents": -248600
+            },
+            {
+              "t": 125,
+              "equity_cents": -227600
+            },
+            {
+              "t": 126,
+              "equity_cents": -226100
+            },
+            {
+              "t": 127,
+              "equity_cents": -230600
+            },
+            {
+              "t": 128,
+              "equity_cents": -220100
+            },
+            {
+              "t": 129,
+              "equity_cents": -226100
+            }
+          ],
+          "is_current": true,
+          "rank": 4,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 10,
+            "momentum_threshold": 0.008
+          },
+          "metrics": {
+            "total_pnl_cents": -226600,
+            "realized_pnl_cents": -232600,
+            "unrealized_pnl_cents": 6000,
+            "trade_count": 16,
+            "sell_count": 4,
+            "win_rate": 0.0,
+            "final_position": 1500,
+            "max_drawdown_cents": -275200
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 5,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 10,
+            "momentum_threshold": 0.003
+          },
+          "metrics": {
+            "total_pnl_cents": -276800,
+            "realized_pnl_cents": -282000,
+            "unrealized_pnl_cents": 5200,
+            "trade_count": 21,
+            "sell_count": 7,
+            "win_rate": 0.14285714285714285,
+            "final_position": 1300,
+            "max_drawdown_cents": -321400
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 6,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 15,
+            "momentum_threshold": 0.003
+          },
+          "metrics": {
+            "total_pnl_cents": -403200,
+            "realized_pnl_cents": -411200,
+            "unrealized_pnl_cents": 8000,
+            "trade_count": 25,
+            "sell_count": 10,
+            "win_rate": 0.2,
+            "final_position": 1000,
+            "max_drawdown_cents": -470200
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 7,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 15,
+            "momentum_threshold": 0.008
+          },
+          "metrics": {
+            "total_pnl_cents": -403800,
+            "realized_pnl_cents": -413400,
+            "unrealized_pnl_cents": 9600,
+            "trade_count": 20,
+            "sell_count": 7,
+            "win_rate": 0.0,
+            "final_position": 1200,
+            "max_drawdown_cents": -470200
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 8,
+          "is_winner": false
+        },
+        {
+          "params": {
+            "lookback_samples": 15,
+            "momentum_threshold": 0.005
+          },
+          "metrics": {
+            "total_pnl_cents": -453600,
+            "realized_pnl_cents": -463200,
+            "unrealized_pnl_cents": 9600,
+            "trade_count": 22,
+            "sell_count": 8,
+            "win_rate": 0.0,
+            "final_position": 1200,
+            "max_drawdown_cents": -495600
+          },
+          "equity_curve": [],
+          "is_current": false,
+          "rank": 9,
+          "is_winner": false
+        }
+      ]
+    }
+  ]
+}

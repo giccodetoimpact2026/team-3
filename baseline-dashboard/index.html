@@ -8,13 +8,16 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   </head>
   <body>
+    <!-- GLOBAL FRAME — always visible on every tab (kill switch, health, clock).
+         The kill switch lives here, NOT on the Risk tab, so an emergency halt is
+         one click away from wherever the operator is looking. -->
     <header class="topbar">
       <div class="brand">
         <img src="assets/gic-logo-placeholder.svg" alt="GIC" class="logo" />
         <span class="title">Trading Dashboard</span>
       </div>
       <div class="status">
-        <span id="bot-state" class="badge bot offline" title="Bot lifecycle state (GET /bot/status)">BOT OFFLINE</span>
+        <span id="bot-state" class="badge bot offline" title="Bot lifecycle (heartbeat via GET /bot/status)">BOT OFFLINE</span>
         <button id="kill-switch" class="btn danger" type="button" disabled title="Emergency stop: block new orders, cancel every open order, stop the bot. No confirmation.">HALT BOT</button>
         <span id="session-badge" class="badge" title="Trading session state (SSE)">—</span>
         <span id="connectivity-dot" class="dot offline"></span>
@@ -22,138 +25,339 @@
       </div>
     </header>
 
+    <nav class="tabs" aria-label="Dashboard sections">
+      <a href="#overview" data-tab="overview" class="active">🏠 Overview</a>
+      <a href="#strategy" data-tab="strategy">📈 Strategy</a>
+      <a href="#execution" data-tab="execution">🕯️ Execution</a>
+      <a href="#performance" data-tab="performance">📊 Performance</a>
+      <a href="#risk" data-tab="risk">🛡️ Risk &amp; Control</a>
+      <a href="#ops" data-tab="ops">🧾 Ops / Logs</a>
+      <a href="#assistant" data-tab="assistant">🤖 Assistant</a>
+      <a href="backtest.html" class="external">Backtest ↗</a>
+    </nav>
+
     <main class="content">
       <div id="halt-result" class="halt-result" style="display: none" role="status"></div>
       <div id="announcement" class="announcement" style="display: none"></div>
 
-      <section class="news-settings" id="news-settings" style="display: none">
-        <div class="section-head">
-          <h2>News Strategy</h2>
-          <label class="news-toggle"><input type="checkbox" id="news-enabled" /> Enabled</label>
-        </div>
-        <div class="news-controls">
-          <div class="news-field">
-            <label for="news-cooldown">Cooldown (s)</label>
-            <input type="number" id="news-cooldown" min="0" max="300" step="5" />
+      <!-- ================= OVERVIEW ================= -->
+      <section id="tab-overview" class="tab-panel active">
+        <section class="cards">
+          <div class="card" id="card-total-value">
+            <div class="label">Total Value</div>
+            <div class="value">—</div>
           </div>
-          <div class="news-field">
-            <label for="news-ttl">Bias TTL (s)</label>
-            <input type="number" id="news-ttl" min="0" max="600" step="10" />
+          <div class="card" id="card-realized-pnl">
+            <div class="label">Realized P&amp;L</div>
+            <div class="value">—</div>
           </div>
-          <div class="news-field">
-            <label for="news-default-mult">Default Multiplier</label>
-            <input type="range" id="news-default-mult" min="0" max="1.5" step="0.05" />
-            <span id="news-default-mult-val" class="range-val">0.50</span>
+          <div class="card" id="card-unrealized-pnl">
+            <div class="label">Unrealized P&amp;L</div>
+            <div class="value">—</div>
           </div>
-          <div id="news-symbol-multipliers"></div>
-        </div>
-      </section>
-      <section class="cards">
-        <div class="card" id="card-total-value">
-          <div class="label">Total Value</div>
-          <div class="value">—</div>
-        </div>
-        <div class="card" id="card-realized-pnl">
-          <div class="label">Realized P&amp;L</div>
-          <div class="value">—</div>
-        </div>
-        <div class="card" id="card-unrealized-pnl">
-          <div class="label">Unrealized P&amp;L</div>
-          <div class="value">—</div>
-        </div>
-      </section>
-
-      <section class="ops-strip" id="ops-strip" aria-label="Session order totals">
-        <div class="stat"><span class="label">Buy orders</span><span class="num" id="count-buy">—</span></div>
-        <div class="stat"><span class="label">Sell orders</span><span class="num" id="count-sell">—</span></div>
-        <div class="stat"><span class="label">Partially filled</span><span class="num" id="count-partial">—</span></div>
-        <div class="stat"><span class="label">Rejected</span><span class="num" id="count-rejected">—</span></div>
-      </section>
-
-      <section class="positions">
-        <h2>Positions</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Quantity</th>
-              <th>Avg Cost</th>
-              <th>Market Value</th>
-              <th>Unrealized P&amp;L</th>
-            </tr>
-          </thead>
-          <tbody id="positions-body"></tbody>
-        </table>
-      </section>
-
-      <section class="pnl">
-        <div class="section-head">
-          <h2>P&amp;L by Instrument</h2>
-          <span class="section-meta">Total <strong id="pnl-total">—</strong></span>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th class="num">Realized</th>
-              <th class="num">Unrealized</th>
-              <th class="num">Total</th>
-            </tr>
-          </thead>
-          <tbody id="pnl-body"></tbody>
-        </table>
-        <div class="source" id="pnl-source">—</div>
-      </section>
-
-      <section class="lifecycle">
-        <div class="section-head">
-          <h2>Order Lifecycle</h2>
-          <span class="section-meta" id="lifecycle-count">—</span>
-          <button id="export-csv" class="btn" type="button" disabled>Export CSV</button>
-        </div>
-        <table class="dense">
-          <thead>
-            <tr>
-              <th>Order</th>
-              <th>Time (SGT)</th>
-              <th>Instrument</th>
-              <th>Side</th>
-              <th class="num">Qty</th>
-              <th class="num">Limit</th>
-              <th class="num">Remaining</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody id="lifecycle-body"></tbody>
-        </table>
-        <div class="source" id="export-status"></div>
-      </section>
-
-      <!--
-        M4 — conversational panel (student build). Uncomment and wire an LLM
-        around the provided MCP read tools. mcp-adapter.example.js gives one
-        working call (callTool) to copy; render the answer WITH the tool's
-        `source` citation and a confidence indicator.
-
-        <section id="assistant-panel">
-          <h2>Assistant</h2>
-          ... input + answer area; see mcp-adapter.example.js ...
         </section>
-      -->
 
-      <!--
-        S2 — predictive view (student build). One forward-looking output with an
-        explicit confidence band, labelled as a model estimate.
+        <section class="heatmap-section">
+          <div class="section-head">
+            <h2>Portfolio Heat Map</h2>
+            <span class="section-meta">Colour = total P&amp;L per instrument</span>
+          </div>
+          <div id="heatmap" class="heatmap"></div>
+        </section>
 
-        <section id="forecast-panel"></section>
-      -->
+        <section class="ops-strip" id="ops-strip" aria-label="Session order totals">
+          <div class="stat"><span class="label">Buy orders</span><span class="num" id="count-buy">—</span></div>
+          <div class="stat"><span class="label">Sell orders</span><span class="num" id="count-sell">—</span></div>
+          <div class="stat"><span class="label">Partially filled</span><span class="num" id="count-partial">—</span></div>
+          <div class="stat"><span class="label">Rejected</span><span class="num" id="count-rejected">—</span></div>
+        </section>
 
-      <!--
-        Price chart (student build). No candles endpoint exists — build history
-        from the SSE `price` events (a circular buffer per symbol).
+        <section class="positions">
+          <h2>Positions</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Symbol</th><th>Quantity</th><th>Avg Cost</th><th>Market Value</th><th>Unrealized P&amp;L</th>
+              </tr>
+            </thead>
+            <tbody id="positions-body"></tbody>
+          </table>
+        </section>
 
-        <canvas id="price-chart" width="900" height="280"></canvas>
-      -->
+        <section class="pnl">
+          <div class="section-head">
+            <h2>P&amp;L by Instrument</h2>
+            <span class="section-meta">Total <strong id="pnl-total">—</strong></span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Symbol</th><th class="num">Realized</th><th class="num">Unrealized</th><th class="num">Total</th>
+              </tr>
+            </thead>
+            <tbody id="pnl-body"></tbody>
+          </table>
+          <div class="source" id="pnl-source">—</div>
+        </section>
+
+        <section class="live-quotes">
+          <div class="section-head">
+            <h2>Live Quotes <span class="section-meta">the bot's resting bids &amp; asks (open orders on the exchange)</span></h2>
+            <span class="section-meta" id="quotes-count"></span>
+          </div>
+          <div class="quotes-grid">
+            <div class="quotes-col">
+              <h3 class="quotes-title bid">Bids · buys</h3>
+              <table class="dense">
+                <thead><tr><th>Time (SGT)</th><th>Instrument</th><th class="num">Bid Price</th><th class="num">Remaining</th><th>Status</th></tr></thead>
+                <tbody id="bids-body"></tbody>
+              </table>
+            </div>
+            <div class="quotes-col">
+              <h3 class="quotes-title ask">Asks · sells</h3>
+              <table class="dense">
+                <thead><tr><th>Time (SGT)</th><th>Instrument</th><th class="num">Ask Price</th><th class="num">Remaining</th><th>Status</th></tr></thead>
+                <tbody id="asks-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="order-trail">
+          <div class="section-head">
+            <h2>Bot Order Trail <span class="section-meta">bids (buys) &amp; asks (sells) the bot has placed</span></h2>
+            <span class="section-meta" id="trail-count"></span>
+          </div>
+          <table class="dense">
+            <thead>
+              <tr>
+                <th>Time (SGT)</th><th>Instrument</th><th>Side</th>
+                <th class="num">Price</th><th class="num">Qty</th><th class="num">Filled</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="trail-body"></tbody>
+          </table>
+        </section>
+      </section>
+
+      <!-- ================= STRATEGY ================= -->
+      <section id="tab-strategy" class="tab-panel">
+        <div class="scaffold-note">
+          Live per-instrument strategy &amp; regime state needs a bot endpoint that
+          does not exist yet (the regime classifier lives in
+          <code>baseline-bot/strategies/regime.py</code> but is not exposed over
+          <code>/bot</code>). The table below shows the intended layout; wire it to a
+          <code>GET /bot/strategy</code> feed to make it live.
+        </div>
+        <section class="strategy-state">
+          <div class="section-head"><h2>Per-instrument regime &amp; strategy</h2></div>
+          <table>
+            <thead>
+              <tr><th>Symbol</th><th>Strategy</th><th>Regime (ATR)</th><th>Status</th></tr>
+            </thead>
+            <tbody id="strategy-body"></tbody>
+          </table>
+          <div class="source">Regime: trending / ranging / neutral — pending <code>GET /bot/strategy</code>.</div>
+        </section>
+
+        <!-- Live parameters: the bot's news-strategy config, with two-step confirm
+             on every change (Priya's rule: one click to propose, one to confirm). -->
+        <section class="news-settings" id="news-settings" style="display: none">
+          <div class="section-head">
+            <h2>Strategy parameters (two-step confirm)</h2>
+            <label class="news-toggle"><input type="checkbox" id="news-enabled" /> News strategy enabled</label>
+          </div>
+          <div class="news-controls">
+            <div class="news-field">
+              <label for="news-cooldown">Cooldown (s)</label>
+              <input type="number" id="news-cooldown" min="0" max="300" step="5" />
+            </div>
+            <div class="news-field">
+              <label for="news-ttl">Bias TTL (s)</label>
+              <input type="number" id="news-ttl" min="0" max="600" step="10" />
+            </div>
+            <div class="news-field">
+              <label for="news-default-mult">Default Multiplier</label>
+              <input type="range" id="news-default-mult" min="0" max="1.5" step="0.05" />
+              <span id="news-default-mult-val" class="range-val">0.50</span>
+            </div>
+            <div id="news-symbol-multipliers"></div>
+          </div>
+          <div id="param-confirm" class="param-confirm" style="display: none">
+            <span id="param-confirm-text"></span>
+            <button id="param-confirm-yes" class="btn" type="button">Confirm</button>
+            <button id="param-confirm-no" class="btn ghost" type="button">Cancel</button>
+          </div>
+        </section>
+      </section>
+
+      <!-- ================= EXECUTION ================= -->
+      <section id="tab-execution" class="tab-panel">
+        <section class="chart-section">
+          <div class="section-head">
+            <h2>Price &amp; VWAP</h2>
+            <span class="chart-controls">
+              <select id="chart-symbol" title="Instrument"></select>
+              <span class="seg" role="group" aria-label="Bar interval">
+                <button class="btn ghost seg-btn active" data-bucket="60000" type="button">1m</button>
+                <button class="btn ghost seg-btn" data-bucket="300000" type="button">5m</button>
+                <button class="btn ghost seg-btn" data-bucket="900000" type="button">15m</button>
+              </span>
+              <span class="legend"><i class="swatch vwap"></i> VWAP</span>
+            </span>
+          </div>
+          <canvas id="price-chart" width="960" height="320"></canvas>
+          <div class="source" id="chart-source">Candles are built client-side from the SSE <code>price</code> feed (no OHLCV endpoint); VWAP from <code>trade</code> events.</div>
+        </section>
+
+        <section class="fill-rate">
+          <div class="section-head"><h2>Fill Rate</h2></div>
+          <table>
+            <thead>
+              <tr><th>Symbol</th><th class="num">Sent</th><th class="num">Filled</th><th class="num">Partial</th><th class="num">Rejected</th><th class="num">Fill %</th></tr>
+            </thead>
+            <tbody id="fillrate-body"></tbody>
+          </table>
+        </section>
+
+        <section class="lifecycle">
+          <div class="section-head">
+            <h2>Order Lifecycle</h2>
+            <span class="section-meta" id="lifecycle-count">—</span>
+          </div>
+          <table class="dense">
+            <thead>
+              <tr>
+                <th>Order</th><th>Time (SGT)</th><th>Instrument</th><th>Side</th>
+                <th class="num">Qty</th><th class="num">Limit</th><th class="num">Remaining</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="lifecycle-body"></tbody>
+          </table>
+        </section>
+      </section>
+
+      <!-- ================= PERFORMANCE ================= -->
+      <section id="tab-performance" class="tab-panel">
+        <div class="scaffold-note info">
+          All figures below are derived client-side from the trade log this session.
+          <strong>Sharpe</strong> is per-trade (mean P&amp;L per realizing fill ÷ its
+          stddev), <em>not</em> annualized — a single intraday window has no calendar or
+          risk-free rate. <strong>Information ratio</strong> needs a benchmark feed the
+          exchange does not provide, so it shows <code>—</code>.
+        </div>
+        <section class="analytics">
+          <div class="section-head"><h2>Risk-adjusted performance (per instrument)</h2></div>
+          <table>
+            <thead>
+              <tr>
+                <th>Symbol</th><th class="num">Trades</th><th class="num">Win %</th>
+                <th class="num">Profit factor</th><th class="num">Avg win</th><th class="num">Avg loss</th>
+                <th class="num">Sharpe (per-trade)</th><th class="num">Info ratio</th><th class="num">Total P&amp;L</th>
+              </tr>
+            </thead>
+            <tbody id="analytics-body"></tbody>
+          </table>
+          <div class="source" id="analytics-source">—</div>
+        </section>
+      </section>
+
+      <!-- ================= RISK & CONTROL ================= -->
+      <section id="tab-risk" class="tab-panel">
+        <section class="risk-summary">
+          <div class="section-head"><h2>Exposure &amp; Drawdown</h2></div>
+          <div class="risk-tiles">
+            <div class="card"><div class="label">Net exposure</div><div class="value" id="risk-net">—</div></div>
+            <div class="card"><div class="label">Gross exposure</div><div class="value" id="risk-gross">—</div></div>
+            <div class="card"><div class="label">Max drawdown</div><div class="value" id="risk-maxdd">—</div></div>
+            <div class="card"><div class="label">Current drawdown</div><div class="value" id="risk-curdd">—</div></div>
+          </div>
+        </section>
+
+        <section class="correlation">
+          <div class="section-head">
+            <h2>Correlation Matrix</h2>
+            <span class="section-meta">Pearson r of returns from the SSE price buffer</span>
+          </div>
+          <div id="corr-matrix" class="corr-matrix"></div>
+        </section>
+
+        <section class="risk-controls">
+          <div class="scaffold-note">
+            Per-instrument pause/resume and editable stop-losses need bot control
+            endpoints that do not exist yet (only <code>GET /bot/status</code> and
+            <code>POST /bot/halt</code> are wired). Stop-losses currently live in
+            <code>baseline-bot/config.yaml</code>; expose them over <code>/bot</code>
+            to make this section live.
+          </div>
+          <div class="section-head"><h2>Per-instrument controls</h2></div>
+          <table>
+            <thead><tr><th>Symbol</th><th>Stop-loss</th><th>Order-rate</th><th>Control</th></tr></thead>
+            <tbody id="risk-controls-body"></tbody>
+          </table>
+        </section>
+      </section>
+
+      <!-- ================= OPS / LOGS ================= -->
+      <section id="tab-ops" class="tab-panel">
+        <section class="session-summary">
+          <div class="section-head"><h2>Session Summary</h2></div>
+          <div class="summary-tiles">
+            <div class="card"><div class="label">Total P&amp;L</div><div class="value" id="sum-pnl">—</div></div>
+            <div class="card"><div class="label">Trades</div><div class="value" id="sum-trades">—</div></div>
+            <div class="card"><div class="label">Best</div><div class="value" id="sum-best">—</div></div>
+            <div class="card"><div class="label">Worst</div><div class="value" id="sum-worst">—</div></div>
+          </div>
+          <div class="source" id="summary-source">—</div>
+        </section>
+
+        <section class="lifecycle">
+          <div class="section-head">
+            <h2>Trade Log</h2>
+            <span class="section-meta" id="ops-log-count">—</span>
+            <button id="export-csv" class="btn" type="button" disabled>Export CSV</button>
+          </div>
+          <table class="dense">
+            <thead>
+              <tr>
+                <th>Order</th><th>Time (SGT)</th><th>Instrument</th><th>Side</th>
+                <th class="num">Qty</th><th class="num">Limit</th><th class="num">Remaining</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="ops-log-body"></tbody>
+          </table>
+          <div class="source" id="export-status"></div>
+        </section>
+
+        <section class="audit">
+          <div class="section-head">
+            <h2>Audit Log <span class="section-meta">human actions this session</span></h2>
+          </div>
+          <table class="dense">
+            <thead><tr><th>Time (SGT)</th><th>Action</th><th>Detail</th></tr></thead>
+            <tbody id="audit-body"></tbody>
+          </table>
+        </section>
+      </section>
+
+      <!-- ================= ASSISTANT ================= -->
+      <section id="tab-assistant" class="tab-panel">
+        <div class="scaffold-note">
+          The conversational assistant is a Phase-3 differentiator and is not built yet.
+          It must run over the provided MCP read tools and show <strong>citations +
+          confidence</strong> (<code>source</code> + <code>as_of</code>) on every answer —
+          no black box. Copy the working call in
+          <code>mcp-adapter.example.js</code> to wire it.
+        </div>
+        <section class="assistant-shell">
+          <div class="section-head"><h2>Ask the desk</h2></div>
+          <div class="assistant-input">
+            <input id="assistant-q" type="text" placeholder="e.g. Are we over-exposed to NOVA and AXON?" disabled />
+            <button class="btn" type="button" disabled>Ask</button>
+          </div>
+          <div class="assistant-answer" id="assistant-answer">Assistant disabled — wire it to the MCP server and the organizer LLM service.</div>
+        </section>
+      </section>
     </main>
 
     <footer class="footer">
@@ -164,6 +368,9 @@
     <script src="js/format.js"></script>
     <script src="js/view.js"></script>
     <script src="js/trades.js"></script>
+    <script src="js/analytics.js"></script>
+    <script src="js/chart.js"></script>
+    <script src="js/tabs.js"></script>
     <script src="js/mcp.js"></script>
     <script src="js/api.js"></script>
     <script src="js/dashboard.js"></script>

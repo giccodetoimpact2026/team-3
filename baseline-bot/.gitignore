@@ -6,3 +6,7 @@ venv/
 logs/
 .env
 config.local.yaml
+
+# Backtest captures and outputs, except the committed demo sample.
+recordings/*
+!recordings/sample_feed.jsonl
