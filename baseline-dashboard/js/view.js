@@ -9,6 +9,7 @@
   } else {
     root.positionRows = api.positionRows; // browser globals
     root.FeedCursor = api.FeedCursor;
+    root.escapeHtml = api.escapeHtml;
   }
 })(typeof self !== "undefined" ? self : this, function (fmt) {
   // One row per instrument in the given order. An instrument absent from the
@@ -65,5 +66,17 @@
     return true;
   };
 
-  return { positionRows, FeedCursor };
+  // Every string interpolated into innerHTML goes through this. Symbols, order
+  // ids and messages come from the exchange and must not be trusted as markup.
+  function escapeHtml(v) {
+    if (v === undefined || v === null) return "";
+    return String(v)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  return { positionRows, FeedCursor, escapeHtml };
 });

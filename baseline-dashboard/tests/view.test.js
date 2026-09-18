@@ -51,3 +51,11 @@ test("FeedCursor: sessionChanged is true only when a different non-empty id arri
   assert.strictEqual(c.sessionChanged("s2"), true);
   assert.strictEqual(c.sessionChanged("s2"), false);
 });
+
+const { escapeHtml } = require("../js/view.js");
+
+test("escapeHtml: neutralises markup in values that come from the exchange", () => {
+  assert.strictEqual(escapeHtml('<img src=x onerror="alert(1)">&'), "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;&amp;");
+  assert.strictEqual(escapeHtml(undefined), "");
+  assert.strictEqual(escapeHtml(42), "42");
+});

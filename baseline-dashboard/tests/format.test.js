@@ -42,3 +42,18 @@ test("formatCurrencyOrDash: missing value renders as a dash, not $0.00", () => {
   assert.strictEqual(formatCurrencyOrDash(0), "$0.00");
   assert.strictEqual(formatCurrencyOrDash(151000), "$1,510.00");
 });
+
+const { centsToDecimal, formatDollars } = require("../js/format.js");
+
+test("centsToDecimal: integer cents become a plain two-decimal string with a period", () => {
+  assert.strictEqual(centsToDecimal(13628), "136.28");
+  assert.strictEqual(centsToDecimal(5), "0.05");
+  assert.strictEqual(centsToDecimal(-124050), "-1240.50");
+  assert.strictEqual(centsToDecimal(0), "0.00");
+});
+
+test("formatDollars: MCP dollar floats render like formatCurrency", () => {
+  assert.strictEqual(formatDollars(-1240.5), "-$1,240.50");
+  assert.strictEqual(formatDollars(320), "$320.00");
+  assert.strictEqual(formatDollars(undefined), "$0.00");
+});

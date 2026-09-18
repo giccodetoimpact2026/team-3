@@ -26,4 +26,18 @@ const ExchangeAPI = {
       return resp && resp.data ? resp.data : resp;
     });
   },
+
+  // GET /orders -> every order of ours in the current window (list of order
+  // objects: id, symbol, side, price, quantity, remaining_qty, status,
+  // created_at, updated_at, ...).
+  getOrders: function () {
+    return $.ajax({
+      url: CONFIG.API_BASE_URL + "/orders",
+      method: "GET",
+      dataType: "json",
+      headers: { "X-API-Key": CONFIG.API_KEY },
+    }).then(function (resp) {
+      return resp && resp.data ? resp.data : resp;
+    });
+  },
 };

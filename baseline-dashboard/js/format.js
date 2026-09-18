@@ -8,6 +8,8 @@
     root.formatCurrency = api.formatCurrency; // browser globals
     root.formatCurrencyOrDash = api.formatCurrencyOrDash;
     root.formatSgt = api.formatSgt;
+    root.centsToDecimal = api.centsToDecimal;
+    root.formatDollars = api.formatDollars;
   }
 })(typeof self !== "undefined" ? self : this, function () {
   // Money is INTEGER CENTS on the exchange wire; render as dollars ($1,510.00).
@@ -47,5 +49,21 @@
     );
   }
 
-  return { formatCurrency, formatCurrencyOrDash, formatSgt };
+  // MCP tools return dollars as floats, not cents (see mcp-server-reference).
+  function formatDollars(dollars) {
+    return formatCurrency(Math.round((dollars || 0) * 100));
+  }
+
+  // Export form: plain number, two decimals, period separator, no grouping,
+  // no currency sign (BUG-016 guardrail). 13628 -> "136.28".
+  function centsToDecimal(cents) {
+    var n = Math.round(cents || 0);
+    var sign = n < 0 ? "-" : "";
+    var abs = Math.abs(n);
+    var whole = Math.floor(abs / 100);
+    var frac = abs % 100;
+    return sign + whole + "." + (frac < 10 ? "0" : "") + frac;
+  }
+
+  return { formatCurrency, formatCurrencyOrDash, formatSgt, formatDollars, centsToDecimal };
 });
