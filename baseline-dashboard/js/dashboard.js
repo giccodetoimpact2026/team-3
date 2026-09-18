@@ -14,6 +14,11 @@
 //   /bot/status every 3 s: lifecycle + heartbeat + feed health -> bot pill
 //   /bot/orders?since=N with it: the bot's order journal -> lifecycle table
 //   (exact codes incl. REJECTED / UNKNOWN, which GET /orders never shows).
+//     price   ──▶ Prices.PriceHistory (no candles endpoint) -> chart, sparklines,
+//                 forecast, correlation, instrument-drop alerts (coalesced, ≥1s)
+//   Persona views (views.js) hide/show [data-section] panels; the choice is
+//   remembered per browser. Panel HTML is built in panels.js from the pure
+//   helpers in analytics.js / prices.js / chart.js.
 //
 // Pure logic lives in format.js, view.js and trades.js (unit-tested in Node).
 // Every exchange-supplied string rendered into HTML goes through escapeHtml.
@@ -27,8 +32,15 @@ const DashboardController = {
   pnl: null, // last MCP get_pnl response
   bot: null, // last GET /bot/status payload, or null when the bot did not answer
   _journalSeq: 0, // cursor into the bot's order journal (per bot process)
-  _timers: { portfolio: null, all: null },
-  _lastAt: { portfolio: 0, all: 0 },
+  _timers: { portfolio: null, all: null, panels: null },
+  _lastAt: { portfolio: 0, all: 0, panels: 0 },
+  view: "executive",
+  prices: null, // Prices.PriceHistory, session-scoped
+  chartSymbol: null,
+  forecasts: {}, // symbol -> Prices.forecast() or null
+  alerts: [],
+  startPrices: {}, // first price seen per symbol this session (instrument-drop alert)
+  startingValue: 0, // first total_value seen this session (drawdown alert)
 
   init: function () {
     this.cursor = new FeedCursor();
@@ -41,11 +53,125 @@ const DashboardController = {
     this.pollBotStatus();
     setInterval(this.pollBotStatus.bind(this), CONFIG.BOT_STATUS_INTERVAL_MS);
 
+    this.prices = new Prices.PriceHistory(CONFIG.PRICE_HISTORY_CAPACITY);
+    this.initViews();
+    AssistantPanel.init(this);
+
     var self = this;
     this.loadInstruments().always(function () {
       self.refreshAll();
       self.connectFeed();
     });
+  },
+
+  // --- Persona views ------------------------------------------------------
+
+  initViews: function () {
+    var self = this;
+    var st = this.storage();
+    this.view = Views.resolveView(st && st.getItem("view"));
+    Panels.renderViewSwitcher(this.view, function (id) {
+      self.view = Panels.applyView(id);
+      try { st && st.setItem("view", self.view); } catch (_) {}
+      self.renderPanels();
+    });
+    Panels.applyView(this.view);
+  },
+
+  // Everything derived for the persona panels, from state already in memory
+  // (no exchange reads). Coalesced because price events arrive several times a
+  // second across the five instruments.
+  requestPanels: function () {
+    var self = this;
+    var wait = CONFIG.REFRESH_MIN_INTERVAL_MS - (Date.now() - this._lastAt.panels);
+    if (wait <= 0) return this.renderPanels();
+    if (this._timers.panels) return;
+    this._timers.panels = setTimeout(function () { self._timers.panels = null; self.renderPanels(); }, wait);
+  },
+
+  caps: function () {
+    var b = this.bot || {};
+    var src = (b.limits && b.limits.max_position) || (b.risk && b.risk.max_position) || {};
+    return src;
+  },
+
+  symbolsForPanels: function () {
+    if (this.instruments.length) return this.instruments;
+    return this.prices ? this.prices.symbols() : [];
+  },
+
+  forecastFor: function (symbol) {
+    return this.forecasts[symbol] || null;
+  },
+
+  // Facts for the executive briefing (assistant-panel.js adds the MCP session
+  // summary itself). Money converted to SGD dollars for the model.
+  briefingFacts: function () {
+    var p = this.portfolio || {};
+    var by = this.pnl && this.pnl.data ? this.pnl.data.by_instrument : Trades.pnlFromPortfolio(p, this.instruments).data.by_instrument;
+    return {
+      portfolio_sgd: { total_value: (p.total_value || 0) / 100, realized_pnl: (p.realized_pnl || 0) / 100, unrealized_pnl: (p.unrealized_pnl || 0) / 100, fills_this_window: (p.trades || []).length },
+      pnl_by_instrument_sgd: by,
+      bot: this.bot ? { state: this.bot.state, feed: this.bot.feed_state, heartbeat_age_s: this.bot.heartbeat_age_s, feed_reconnects: this.bot.feed_reconnects, paused: !!(this.bot.orders && this.bot.orders.paused) } : "offline (no status)",
+      alerts: this.alerts,
+      order_counts: Trades.counters(this.orders, this.history),
+    };
+  },
+
+  renderPanels: function () {
+    this._lastAt.panels = Date.now();
+    var symbols = this.symbolsForPanels();
+    var p = this.portfolio;
+    var self = this;
+    if (!symbols.length) return;
+
+    // Forecasts (all symbols; the chart, the analyst cards and the assistant share them).
+    this.forecasts = {};
+    var lastPrices = {};
+    symbols.forEach(function (s) {
+      var samples = self.prices.samples(s);
+      self.forecasts[s] = Prices.forecast(samples, { minSamples: CONFIG.FORECAST_MIN_SAMPLES, horizonMs: CONFIG.FORECAST_HORIZON_MS });
+      var last = self.prices.last(s);
+      if (last) lastPrices[s] = last.p;
+    });
+
+    // Alerts feed the Risk view, the summary and the briefing.
+    var caps = this.caps();
+    this.alerts = Analytics.evaluateAlerts({
+      portfolio: p, startingValue: this.startingValue, caps: caps,
+      lastPrices: lastPrices, startPrices: this.startPrices, bot: this.bot, thresholds: CONFIG.ALERT_THRESHOLDS,
+    });
+    var crit = this.alerts.filter(function (a) { return a.level === "critical"; }).length;
+    Panels.renderAlerts(this.alerts, this.alerts.length ? this.alerts.length + " active · " + crit + " critical" : "all clear · drawdown limit " + CONFIG.ALERT_THRESHOLDS.drawdownPct + "% of starting capital");
+
+    var by = this.pnl && this.pnl.data ? this.pnl.data.by_instrument : (p && p.session_id ? Trades.pnlFromPortfolio(p, symbols).data.by_instrument : {});
+    Panels.renderHeatmap(Analytics.heatTiles(by, symbols), this.pnl ? "Source: " + this.pnl.source + " · as of " + this.pnl.as_of : (p && p.session_id ? "Source: GET /portfolio (MCP unavailable)" : "Waiting for data"));
+
+    if (!this.chartSymbol || symbols.indexOf(this.chartSymbol) === -1) this.chartSymbol = symbols[0];
+    Panels.renderChartTabs(symbols, this.chartSymbol, function (s) { self.chartSymbol = s; self.renderPanels(); });
+    // Only fills inside the chart's time window are drawn: the price buffer
+    // starts when the page opened, and fills before that would land off-axis.
+    var chartSamples = this.prices.samples(this.chartSymbol);
+    var windowStart = chartSamples.length ? chartSamples[0].t : Infinity;
+    var fills = ((p && p.trades) || []).filter(function (t) { return t.symbol === self.chartSymbol; }).map(function (t) {
+      return { t: Date.parse(t.timestamp), p: t.price, side: t.side, quantity: t.quantity };
+    }).filter(function (f) { return f.t >= windowStart; });
+    // Resting orders (what the bot is working right now) are drawn on the chart
+    // as dashed limit lines and listed in the Open Orders panel.
+    var open = Analytics.openOrderRows ? Analytics.openOrderRows(this.orders, Date.now()) : [];
+    var resting = open.filter(function (o) { return o.symbol === self.chartSymbol; }).map(function (o) { return { side: o.side.toLowerCase(), price: o.price, remaining: o.remaining }; });
+    Panels.renderChart(this.chartSymbol, chartSamples, fills, this.forecasts[this.chartSymbol], resting);
+    if (Panels.renderOpenOrders) Panels.renderOpenOrders(open);
+
+    Panels.renderFillRate(Analytics.fillRateRows(this.orders, this.history, symbols));
+    Panels.renderExposure(Analytics.exposureRows(p, caps, symbols), Analytics.netExposure(p), Object.keys(caps).length > 0);
+    Panels.renderCorrelation(Prices.correlationMatrix(this.prices, symbols, { bucketMs: CONFIG.CORRELATION_BUCKET_MS, buckets: CONFIG.CORRELATION_BUCKETS }));
+    Panels.renderForecast(symbols.map(function (s) { return { symbol: s, forecast: self.forecasts[s], samples: self.prices.samples(s).length }; }));
+    Panels.renderPerformance(Analytics.performanceRows((p && p.trades) || [], (p && p.positions) || [], symbols));
+
+    var v = botStatusView(this.bot);
+    Panels.renderSummary(Analytics.sessionSummary({ portfolio: p, pnlByInstrument: by, alerts: this.alerts }), p && p.session_id,
+      v.label.replace(/^BOT /, "").toLowerCase() + (this.bot && typeof this.bot.feed_reconnects === "number" ? ", " + this.bot.feed_reconnects + " feed reconnects" : ""));
   },
 
   // --- Bot control: state pill + kill switch (P0-14) ----------------------
@@ -59,10 +185,12 @@ const DashboardController = {
         self.bot = status;
         self.renderBotStatus(status);
         self.pollBotOrders();
+        self.requestPanels();
       })
       .fail(function () {
         self.bot = null;
         self.renderBotStatus(null);
+        self.requestPanels();
       });
   },
 
@@ -171,6 +299,13 @@ const DashboardController = {
     };
     es.addEventListener("price", function (e) {
       if (!self.cursor.accept(e.lastEventId)) return; // replayed
+      var d = self.parse(e.data);
+      if (d && d.symbol && d.last_price > 0) {
+        var t = d.timestamp ? Date.parse(d.timestamp) : Date.now();
+        self.prices.push(d.symbol, d.last_price, isNaN(t) ? Date.now() : t);
+        if (!self.startPrices[d.symbol]) self.startPrices[d.symbol] = d.last_price;
+        self.requestPanels();
+      }
       self.requestRefresh("portfolio");
     });
     es.addEventListener("trade", function (e) {
@@ -231,9 +366,11 @@ const DashboardController = {
         self.portfolio = portfolio;
         if (self.cursor.sessionChanged(portfolio.session_id)) self.onSessionChange(portfolio.session_id);
         else self.bindHistory(portfolio.session_id);
+        self.rememberStartingValue(portfolio);
         self.renderCards(portfolio);
         self.renderPositions(portfolio);
         if (!self.pnl) self.renderPnlFallback("MCP unavailable"); // keep per-instrument P&L live from the exchange
+        self.requestPanels();
         self.setConnectivity(true);
         $("#last-updated").removeClass("stale");
       })
@@ -251,6 +388,7 @@ const DashboardController = {
         self.bindHistory(self.orders[0] && self.orders[0].session_id);
         self.history.observe(self.orders);
         self.renderOrders();
+        self.requestPanels();
       })
       .fail(function () {
         self.markOrdersUnavailable("Unavailable");
@@ -267,6 +405,7 @@ const DashboardController = {
         self.pnl = resp;
         self._pnlFailedAt = 0;
         self.renderPnl(resp);
+        self.requestPanels();
       })
       .fail(function () {
         self.pnl = null;
@@ -294,6 +433,10 @@ const DashboardController = {
     this.history = new Trades.LifecycleHistory(sessionId, this.storage());
     this.orders = [];
     this.pnl = null;
+    this.prices.reset();
+    this.startPrices = {};
+    this.startingValue = 0;
+    this.forecasts = {};
     this.renderAnnouncement(null);
     this.renderOrders();
     this.markPnlUnavailable("Loading…");
@@ -302,6 +445,22 @@ const DashboardController = {
       self.refreshOrders();
       self.refreshPnl();
     });
+  },
+
+  // Starting capital for the drawdown alert (Priya: 15% of starting capital):
+  // the first total value seen in this window, remembered per window so a
+  // page reload mid-session does not reset the baseline.
+  rememberStartingValue: function (portfolio) {
+    if (!portfolio || !portfolio.session_id || !(portfolio.total_value > 0)) return;
+    var key = "start:" + portfolio.session_id;
+    var st = this.storage();
+    var saved = 0;
+    try { saved = Number(st && st.getItem(key)) || 0; } catch (_) {}
+    if (!saved) {
+      saved = portfolio.total_value;
+      try { st && st.setItem(key, String(saved)); } catch (_) {}
+    }
+    this.startingValue = saved;
   },
 
   // --- Rendering -----------------------------------------------------------
@@ -317,6 +476,7 @@ const DashboardController = {
     var symbols = this.instruments.length
       ? this.instruments
       : (portfolio.positions || []).map(function (p) { return p.symbol; });
+    var self = this;
     var rows = positionRows(symbols, portfolio)
       .map(function (r) {
         return (
@@ -326,6 +486,7 @@ const DashboardController = {
           "<td>" + escapeHtml(r.avg_cost) + "</td>" +
           "<td>" + escapeHtml(r.market_value) + "</td>" +
           "<td>" + escapeHtml(r.unrealized_pnl) + "</td>" +
+          Panels.sparklineCell(self.prices ? self.prices.samples(r.symbol) : []) +
           "</tr>"
         );
       })
@@ -406,7 +567,7 @@ const DashboardController = {
       $("#positions-body").html(
         symbols.map(function (s) {
           var cells = "";
-          for (var i = 0; i < 4; i++) cells += "<td>" + escapeHtml(label) + "</td>";
+          for (var i = 0; i < 5; i++) cells += "<td>" + escapeHtml(label) + "</td>";
           return "<tr><td>" + escapeHtml(s) + "</td>" + cells + "</tr>";
         }).join("")
       ).addClass("stale");

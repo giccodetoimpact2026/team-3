@@ -19,14 +19,35 @@ an existing codebase**, not starting fresh. The authoritative specs are:
 Dashboard. Done: SSE feed instead of polling, stale DOM cleared on reconnect,
 SGT timestamps, dynamic instruments, session counters, per-instrument P&L via
 MCP (with `/portfolio` fallback), order lifecycle table, Gerald's CSV export.
-Open: a **heartbeat-based** health dot, an always-visible **kill switch**, the
-conversational **MCP panel** (cite the tool + show confidence), a predictive
-view. See `HANDOVER.md` for what's rough and what's a stub.
+Also done: heartbeat-based bot pill, always-visible kill switch, the
+conversational **MCP panel** (tool citations + rule-based confidence), the
+5-minute forecast with a 90% band, price chart with fills, persona views,
+heat map, fill rates, exposure vs caps, alerts, correlation, performance
+breakdown, executive briefing. See `HANDOVER.md` for what's rough.
 
 Module map: `format.js` (money/SGT), `view.js` (position rows, SSE cursor,
 HTML escaping), `trades.js` (lifecycle history, counters, cost basis, CSV),
-`mcp.js` (MCP REST facade), `api.js` (exchange REST), `dashboard.js`
-(controller + DOM). Keep new logic in the pure modules and test it in Node.
+`views.js` (persona views: which sections each shows), `prices.js` (SSE price
+history, 5-minute forecast, sparklines, correlation), `chart.js` (SVG price
+chart with our fills, resting orders and the forecast cone), `analytics.js`
+(heat map, fill rates, exposure vs caps, alerts, open orders, performance
+breakdown, session summary),
+`assistant.js` (LLM request shapes, tool loop, citations, rule-based
+confidence), `mcp.js` (MCP REST facade), `api.js` (exchange REST), `panels.js`
++ `assistant-panel.js` (DOM for the persona panels and the M4 chat),
+`dashboard.js` (controller). Keep new logic in the pure modules and test it in Node.
+
+Persona views (brief §8 decision 5): Executive (default), Trader, Risk,
+Analyst, Ops. A view only hides sections; every section keeps rendering. The
+bot pill and kill switch sit outside every view.
+
+LLM calls go through `server.js` `/llm/*` -> `https://llm.codetoimpact.sg`
+(the key is injected server-side; only this service counts for AI scoring).
+Assistant answers use `sonnet` with tools; the executive briefing is a
+one-shot `haiku` call. Confidence shown in the panel is computed in
+`assistant.js` from tool success and `as_of` freshness, never asked of the
+model. Position caps for the Risk view come from `GET /bot/status`
+`limits.max_position`.
 
 ## Ground rules (do not violate)
 

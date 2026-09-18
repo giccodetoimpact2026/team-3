@@ -189,7 +189,8 @@ def main():
 
     # Discover instruments — never hardcode the universe.
     instruments = client.get_instruments()
-    log(f"instruments: {[i.get('symbol') for i in instruments]}")
+    symbols = [i.get("symbol") for i in instruments if i.get("symbol")]
+    log(f"instruments: {symbols}")
 
     primary = config["instruments"]["active"]["primary"]
     secondary = config["instruments"]["active"]["secondary"]
@@ -383,6 +384,7 @@ def main():
             "orders": orders.status(),
             "crash_guard": crash.status() if crash is not None else {"enabled": False},
             "dca": dca.status() if dca is not None else {"enabled": False},
+            "limits": risk.snapshot(symbols),
         }
         snapshot.update(heartbeat.snapshot())
         return snapshot

@@ -13,6 +13,8 @@
         <img src="assets/gic-logo-placeholder.svg" alt="GIC" class="logo" />
         <span class="title">Trading Dashboard</span>
       </div>
+      <!-- Persona views (brief §8 decision 5). Buttons are built from js/views.js. -->
+      <nav class="views" id="view-switcher" aria-label="Dashboard view"></nav>
       <div class="status">
         <span id="bot-state" class="badge bot offline" title="Bot lifecycle state (GET /bot/status)">BOT OFFLINE</span>
         <button id="kill-switch" class="btn danger" type="button" disabled title="Emergency stop: block new orders, cancel every open order, stop the bot. No confirmation.">HALT BOT</button>
@@ -25,7 +27,18 @@
     <main class="content">
       <div id="halt-result" class="halt-result" style="display: none" role="status"></div>
       <div id="announcement" class="announcement" style="display: none"></div>
-      <section class="cards">
+      <p class="view-audience" id="view-audience"></p>
+
+      <!-- Risk: alerts (Priya) -->
+      <section class="alerts" id="alerts" data-section="alerts">
+        <div class="section-head">
+          <h2>Alerts</h2>
+          <span class="section-meta" id="alerts-meta">—</span>
+        </div>
+        <div id="alerts-list" class="alerts-list"></div>
+      </section>
+
+      <section class="cards" data-section="cards">
         <div class="card" id="card-total-value">
           <div class="label">Total Value</div>
           <div class="value">—</div>
@@ -40,14 +53,143 @@
         </div>
       </section>
 
-      <section class="ops-strip" id="ops-strip" aria-label="Session order totals">
+      <!-- Executive: heat map (Raymond) -->
+      <section class="heatmap" id="heatmap" data-section="heatmap">
+        <div class="section-head">
+          <h2>Portfolio heat map</h2>
+          <span class="section-meta" id="heatmap-meta">Total P&amp;L per instrument; colour and number</span>
+        </div>
+        <div class="heat-grid" id="heat-grid"></div>
+      </section>
+
+      <!-- Executive: AI briefing (Winston) -->
+      <section class="briefing" id="briefing" data-section="briefing">
+        <div class="section-head">
+          <h2>Executive briefing</h2>
+          <span class="section-meta">Four answers in 30 seconds: made money? how much? which instruments? stable?</span>
+          <button id="briefing-btn" class="btn" type="button" disabled>Brief me</button>
+        </div>
+        <div class="briefing-body" id="briefing-body">Press <strong>Brief me</strong> for a one-paragraph summary written by the LLM service from the MCP session summary, per-instrument P&amp;L, bot health and alerts.</div>
+        <div class="source" id="briefing-source"></div>
+      </section>
+
+      <section class="ops-strip" id="ops-strip" data-section="ops-strip" aria-label="Session order totals">
         <div class="stat"><span class="label">Buy orders</span><span class="num" id="count-buy">—</span></div>
         <div class="stat"><span class="label">Sell orders</span><span class="num" id="count-sell">—</span></div>
         <div class="stat"><span class="label">Partially filled</span><span class="num" id="count-partial">—</span></div>
         <div class="stat"><span class="label">Rejected</span><span class="num" id="count-rejected">—</span></div>
       </section>
 
-      <section class="guards" id="guards" style="display: none">
+      <!-- Trader: price chart with our fills and the forecast cone (Raymond, Adeline, Sophia) -->
+      <section class="chart" id="chart" data-section="chart">
+        <div class="section-head">
+          <h2>Price chart</h2>
+          <div class="tabs" id="chart-tabs" role="tablist"></div>
+          <span class="section-meta" id="chart-meta">—</span>
+        </div>
+        <div id="chart-box" class="chart-box"></div>
+        <div class="source">Built from SSE <code>price</code> events (no candles endpoint). Dots are our fills. The shaded cone is the dashboard's 5-minute forecast: a model estimate with a 90% band, not a fact.</div>
+      </section>
+
+      <!-- Trader / Risk / Ops: what is resting on the book right now -->
+      <section class="open-orders" id="open-orders" data-section="open-orders">
+        <div class="section-head">
+          <h2>Open orders</h2>
+          <span class="section-meta" id="open-orders-meta">—</span>
+        </div>
+        <table class="dense">
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th class="num">Age</th>
+              <th>Symbol</th>
+              <th>Side</th>
+              <th class="num">Qty</th>
+              <th class="num">Filled</th>
+              <th class="num">Remaining</th>
+              <th class="num">Limit</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="open-orders-body"></tbody>
+        </table>
+        <div class="source">Resting limit orders from <code>GET /orders</code>; the same orders are the dashed lines on the price chart.</div>
+      </section>
+
+      <section class="positions" id="positions" data-section="positions">
+        <h2>Positions</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Quantity</th>
+              <th>Avg Cost</th>
+              <th>Market Value</th>
+              <th>Unrealized P&amp;L</th>
+              <th class="spark-head">Trend</th>
+            </tr>
+          </thead>
+          <tbody id="positions-body"></tbody>
+        </table>
+      </section>
+
+      <!-- Trader: fill rates per instrument (Adeline) -->
+      <section class="fillrate" id="fillrate" data-section="fillrate">
+        <div class="section-head">
+          <h2>Fill rate by instrument</h2>
+          <span class="section-meta">Lots of partial fills on a name means our size is too big for its book</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th class="num">Sent</th>
+              <th class="num">Filled</th>
+              <th class="num">Partial</th>
+              <th class="num">Rejected</th>
+              <th class="num">Fill rate</th>
+            </tr>
+          </thead>
+          <tbody id="fillrate-body"></tbody>
+        </table>
+      </section>
+
+      <!-- Risk: exposure against caps (Priya, Clarissa, Farrukh) -->
+      <section class="risk-radar" id="risk-radar" data-section="risk-radar">
+        <div class="section-head">
+          <h2>Exposure vs limits</h2>
+          <span class="section-meta" id="exposure-meta">—</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th class="num">Held</th>
+              <th class="num">Cap</th>
+              <th>Cap used</th>
+              <th class="num">Market value</th>
+              <th class="num">Share of book</th>
+            </tr>
+          </thead>
+          <tbody id="exposure-body"></tbody>
+        </table>
+        <div class="source" id="exposure-source">Caps come from the bot's <code>/status</code> (config.yaml <code>risk</code>). Share of book is market value over total value.</div>
+      </section>
+
+      <!-- Risk: correlation matrix (Clarissa, Farrukh) -->
+      <section class="correlation" id="correlation" data-section="correlation">
+        <div class="section-head">
+          <h2>Correlation</h2>
+          <span class="section-meta" id="correlation-meta">—</span>
+        </div>
+        <table class="corr">
+          <thead><tr id="corr-head"></tr></thead>
+          <tbody id="corr-body"></tbody>
+        </table>
+        <div class="source">Pearson correlation of 5-second log returns over the last 5 minutes of the live feed. Two names near +1 held long together are one doubled position.</div>
+      </section>
+
+      <section class="guards" id="guards" data-section="guards" style="display: none">
         <div class="section-head">
           <h2>Bot Guards</h2>
           <span class="section-meta" id="guards-summary">—</span>
@@ -66,23 +208,40 @@
         </table>
       </section>
 
-      <section class="positions">
-        <h2>Positions</h2>
-        <table>
+      <!-- Analyst: forecast with confidence (Sophia) -->
+      <section class="forecast" id="forecast" data-section="forecast">
+        <div class="section-head">
+          <h2>5-minute forecast</h2>
+          <span class="section-meta">Model estimate, never a fact. Method: drift and volatility of log returns over the live price buffer; 90% band; confidence by rule from sample count and band width.</span>
+        </div>
+        <div class="forecast-grid" id="forecast-grid"></div>
+      </section>
+
+      <!-- Analyst: trading performance breakdown (Farrukh) -->
+      <section class="performance" id="performance" data-section="performance">
+        <div class="section-head">
+          <h2>Trading performance</h2>
+          <span class="section-meta">Per sell fill, realised against the volume-weighted basis at the time (same walk as the CSV export)</span>
+        </div>
+        <table class="dense">
           <thead>
             <tr>
               <th>Symbol</th>
-              <th>Quantity</th>
-              <th>Avg Cost</th>
-              <th>Market Value</th>
-              <th>Unrealized P&amp;L</th>
+              <th class="num">Fills</th>
+              <th class="num">Wins</th>
+              <th class="num">Losses</th>
+              <th class="num">Win rate</th>
+              <th class="num">Avg win</th>
+              <th class="num">Avg loss</th>
+              <th class="num">Profit factor</th>
+              <th class="num">Realised</th>
             </tr>
           </thead>
-          <tbody id="positions-body"></tbody>
+          <tbody id="performance-body"></tbody>
         </table>
       </section>
 
-      <section class="pnl">
+      <section class="pnl" id="pnl" data-section="pnl">
         <div class="section-head">
           <h2>P&amp;L by Instrument</h2>
           <span class="section-meta">Total <strong id="pnl-total">—</strong></span>
@@ -101,7 +260,16 @@
         <div class="source" id="pnl-source">—</div>
       </section>
 
-      <section class="lifecycle">
+      <!-- Ops: end-of-session summary (Linda) -->
+      <section class="session-summary" id="session-summary" data-section="session-summary">
+        <div class="section-head">
+          <h2>Session summary</h2>
+          <span class="section-meta" id="summary-meta">—</span>
+        </div>
+        <div class="summary-grid" id="summary-grid"></div>
+      </section>
+
+      <section class="lifecycle" id="lifecycle" data-section="lifecycle">
         <div class="section-head">
           <h2>Order Lifecycle</h2>
           <span class="section-meta" id="lifecycle-count">—</span>
@@ -125,31 +293,21 @@
         <div class="source" id="export-status"></div>
       </section>
 
-      <!--
-        M4 — conversational panel (student build). Uncomment and wire an LLM
-        around the provided MCP read tools. mcp-adapter.example.js gives one
-        working call (callTool) to copy; render the answer WITH the tool's
-        `source` citation and a confidence indicator.
-
-        <section id="assistant-panel">
-          <h2>Assistant</h2>
-          ... input + answer area; see mcp-adapter.example.js ...
-        </section>
-      -->
-
-      <!--
-        S2 — predictive view (student build). One forward-looking output with an
-        explicit confidence band, labelled as a model estimate.
-
-        <section id="forecast-panel"></section>
-      -->
-
-      <!--
-        Price chart (student build). No candles endpoint exists — build history
-        from the SSE `price` events (a circular buffer per symbol).
-
-        <canvas id="price-chart" width="900" height="280"></canvas>
-      -->
+      <!-- M4: conversational panel. Read-only; the LLM decides which MCP tool
+           to call, the panel runs it and renders the answer with the tool's
+           source citation and a rule-derived confidence label. -->
+      <section class="assistant" id="assistant" data-section="assistant">
+        <div class="section-head">
+          <h2>Ask the desk</h2>
+          <span class="section-meta">Read-only assistant over the MCP tools, the bot's order journal and the forecast. Every figure is cited; confidence is computed from the tool results, not claimed by the model.</span>
+        </div>
+        <div class="chips" id="assistant-chips"></div>
+        <form id="assistant-form" class="assistant-form" autocomplete="off">
+          <input id="assistant-input" type="text" placeholder="e.g. Why are we losing money on CRVX?" maxlength="400" />
+          <button id="assistant-send" class="btn" type="submit" disabled>Ask</button>
+        </form>
+        <div id="assistant-log" class="assistant-log" aria-live="polite"></div>
+      </section>
     </main>
 
     <footer class="footer">
@@ -160,8 +318,15 @@
     <script src="js/format.js"></script>
     <script src="js/view.js"></script>
     <script src="js/trades.js"></script>
+    <script src="js/views.js"></script>
+    <script src="js/prices.js"></script>
+    <script src="js/chart.js"></script>
+    <script src="js/analytics.js"></script>
+    <script src="js/assistant.js"></script>
     <script src="js/mcp.js"></script>
     <script src="js/api.js"></script>
+    <script src="js/panels.js"></script>
+    <script src="js/assistant-panel.js"></script>
     <script src="js/dashboard.js"></script>
   </body>
 </html>

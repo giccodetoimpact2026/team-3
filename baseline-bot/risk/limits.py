@@ -26,6 +26,11 @@ class RiskLimits:
     def max_position(self, symbol: str) -> int:
         return self._max.get(symbol, self._default)
 
+    def snapshot(self, symbols) -> dict:
+        """Risk parameters for GET /status, so the dashboard's Risk view can show
+        the cap each discovered instrument is held to."""
+        return {"max_position": {s: self.max_position(s) for s in symbols}}
+
     def allows_buy(self, symbol: str, projected_position: int, quantity: int) -> bool:
         """True if buying `quantity` keeps the projected long within the cap.
 

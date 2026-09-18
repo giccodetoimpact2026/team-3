@@ -17,6 +17,10 @@ const EXCHANGE = new URL(process.env.EXCHANGE_BASE_URL || "https://api.codetoimp
 // The bot's local control endpoint (kill switch). /bot/* is forwarded here so
 // the browser never talks cross-origin and the bot can stay bound to localhost.
 const BOT = new URL(process.env.BOT_CONTROL_URL || "http://127.0.0.1:8092");
+// The organisers' LLM service (Anthropic Messages shape). /llm/* is forwarded
+// here with the same team key injected, so the browser never holds it and
+// every AI feature is billed and scored against the provided service.
+const LLM = new URL(process.env.LLM_BASE_URL || "https://llm.codetoimpact.sg");
 const ROOT = __dirname;
 
 function loadKey() {
@@ -91,6 +95,33 @@ function proxyBot(req, res) {
   req.pipe(up);
 }
 
+// Forward /llm/<path> to the LLM service. Only POST /v1/messages (the
+// assistant panel and the executive briefing) and GET /health are allowed
+// through; the key is injected here. Anything else is answered 404 locally.
+function proxyLlm(req, res) {
+  const upstreamPath = req.url.replace(/^\/llm/, "") || "/";
+  const allowed = (req.method === "POST" && upstreamPath === "/v1/messages") || (req.method === "GET" && upstreamPath === "/health");
+  if (!allowed) {
+    res.writeHead(404, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ status: "error", error: { code: "NOT_FOUND", message: "only POST /llm/v1/messages and GET /llm/health are proxied" } }));
+  }
+  const headers = { "X-API-Key": API_KEY, accept: "application/json" };
+  if (req.headers["content-type"]) headers["content-type"] = req.headers["content-type"];
+  const up = https.request(
+    { host: LLM.host, path: upstreamPath, method: req.method, headers },
+    function (upRes) {
+      res.writeHead(upRes.statusCode, { "content-type": upRes.headers["content-type"] || "application/json", "cache-control": "no-store", "retry-after": upRes.headers["retry-after"] || "" });
+      upRes.pipe(res);
+    }
+  );
+  up.setTimeout(60000, function () { up.destroy(new Error("LLM service timeout")); });
+  up.on("error", function (err) {
+    res.writeHead(502, { "content-type": "application/json" });
+    res.end(JSON.stringify({ status: "error", error: { code: "LLM_UNREACHABLE", message: err.message } }));
+  });
+  req.pipe(up);
+}
+
 function serveStatic(req, res) {
   let p = decodeURIComponent(new URL(req.url, "http://x").pathname);
   if (p === "/") p = "/index.html";
@@ -107,10 +138,12 @@ http
   .createServer(function (req, res) {
     if (req.url.startsWith("/exchange/") || req.url === "/exchange") return proxy(req, res);
     if (req.url.startsWith("/bot/")) return proxyBot(req, res);
+    if (req.url.startsWith("/llm/")) return proxyLlm(req, res);
     serveStatic(req, res);
   })
   .listen(PORT, function () {
     console.log("dashboard  http://localhost:" + PORT);
     console.log("proxying   /exchange/* -> " + EXCHANGE.origin + (API_KEY ? " (key loaded)" : " (NO KEY)"));
     console.log("proxying   /bot/*      -> " + BOT.origin + " (bot control: status + kill switch)");
+    console.log("proxying   /llm/*      -> " + LLM.origin + " (assistant + briefing; key injected)");
   });
