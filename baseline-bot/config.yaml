@@ -26,7 +26,7 @@
 
 exchange:
   base_url: "https://api.codetoimpact.sg"   # sandbox/live URL from the platform team
-  api_key: "REPLACE_WITH_TEAM_API_KEY"
+  api_key: "c2i_iI2w1FrCqVhrxl-cqMaauw4O6bCwqKZ2"
 
 instruments:
   active:
@@ -168,6 +168,18 @@ risk:
   # An exit concedes more of the spread than a strategy order — getting out
   # beats the last basis point of price.
   exit_limit_offset_bps: 25
+
+news:
+  enabled: true
+  cooldown_seconds: 60
+  directive_ttl_seconds: 120
+  default_size_multiplier: 0.5
+  size_multiplier:
+    NOVA: 0.6
+    ELXR: 0.5
+    CRVX: 0.8
+    DRFT: 0.25
+    AXON: 0.6
 
 control:
   # Local kill-switch endpoint consumed by the dashboard (via its /bot/* proxy).
