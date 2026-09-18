@@ -23,7 +23,7 @@ from utils.logger import log
 
 
 class ControlServer:
-    """Serve /status and /halt for the given callbacks.
+    """Serve /status, /halt, and /news/config for the given callbacks.
 
     status_fn() -> dict         current lifecycle snapshot
     halt_fn()   -> int | None   run the halt path; returns unresolved count
@@ -32,12 +32,15 @@ class ControlServer:
                                 current counter even when nothing is returned, so a
                                 consumer holding a stale cursor from a previous bot
                                 process resyncs instead of waiting forever.
+    news_engine                 optional NewsEngine for live config reads/writes
     """
 
-    def __init__(self, status_fn, halt_fn, host="127.0.0.1", port=8092, events_fn=None):
+    def __init__(self, status_fn, halt_fn, host="127.0.0.1", port=8092,
+                 events_fn=None, news_engine=None):
         self._status_fn = status_fn
         self._halt_fn = halt_fn
         self._events_fn = events_fn
+        self._news_engine = news_engine
         self._halt_lock = threading.Lock()
         self._server = ThreadingHTTPServer((host, port), self._handler_class())
         self._server.daemon_threads = True
@@ -95,12 +98,23 @@ class ControlServer:
                             except ValueError:
                                 return self._send(400, {"error": "since must be an integer"})
                     return self._send(200, outer._events_fn(since))
+                if self.path == "/news/config" and outer._news_engine:
+                    return self._send(200, outer._news_engine.get_config())
                 self._send(404, {"error": "not found"})
 
             def do_POST(self):
                 if self.path == "/halt":
                     log("control: halt requested by dashboard")
                     return self._send(200, outer._halt())
+                if self.path == "/news/config" and outer._news_engine:
+                    length = int(self.headers.get("Content-Length", 0))
+                    body = self.rfile.read(length) if length else b"{}"
+                    try:
+                        patch = json.loads(body)
+                    except (json.JSONDecodeError, ValueError):
+                        return self._send(400, {"error": "invalid JSON"})
+                    outer._news_engine.update_config(patch)
+                    return self._send(200, outer._news_engine.get_config())
                 self._send(404, {"error": "not found"})
 
         return Handler

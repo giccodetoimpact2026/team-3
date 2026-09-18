@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team 3 — GIC #CODETOIMPACT 2026</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --border: #334155;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+  --green: #4ade80;
+  --red: #f87171;
+  --orange: #fb923c;
+  --purple: #a78bfa;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  height: 100vh;
+}
+
+.slide {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  padding: 60px 80px;
+  height: 100vh;
+  animation: fadeIn 0.3s ease;
+}
+
+.slide.active { display: flex; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+h1 {
+  font-size: 2.8rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 16px;
+  line-height: 1.2;
+}
+
+h2 {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 24px;
+}
+
+h3 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--green);
+  margin: 20px 0 8px;
+}
+
+p, li {
+  font-size: 1.15rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+ul { list-style: none; padding: 0; }
+ul li { padding: 6px 0; padding-left: 24px; position: relative; }
+ul li::before { content: ""; position: absolute; left: 0; top: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+.subtitle { color: var(--muted); font-size: 1.3rem; margin-bottom: 40px; }
+
+.grid { display: grid; gap: 24px; margin-top: 20px; }
+.grid-2 { grid-template-columns: 1fr 1fr; }
+.grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.card h3 { margin-top: 0; }
+
+.tag {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 2px 4px;
+}
+
+.tag-green { background: rgba(74, 222, 128, 0.15); color: var(--green); }
+.tag-red { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+.tag-orange { background: rgba(251, 146, 60, 0.15); color: var(--orange); }
+.tag-blue { background: rgba(56, 189, 248, 0.15); color: var(--accent); }
+.tag-purple { background: rgba(167, 139, 250, 0.15); color: var(--purple); }
+
+.stat-row {
+  display: flex;
+  gap: 32px;
+  margin: 24px 0;
+  flex-wrap: wrap;
+}
+
+.stat {
+  text-align: center;
+}
+
+.stat .num {
+  font-size: 2.8rem;
+  font-weight: 700;
+  color: var(--green);
+  display: block;
+}
+
+.stat .label {
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.diagram {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px;
+  font-family: monospace;
+  font-size: 1rem;
+  line-height: 1.8;
+  white-space: pre;
+  color: var(--muted);
+  overflow-x: auto;
+  margin-top: 16px;
+}
+
+.diagram .highlight { color: var(--accent); font-weight: 600; }
+.diagram .green { color: var(--green); }
+.diagram .orange { color: var(--orange); }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 1rem;
+}
+
+th {
+  text-align: left;
+  padding: 10px 16px;
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 600;
+  border-bottom: 2px solid var(--border);
+}
+
+td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+tr:hover td { background: rgba(56, 189, 248, 0.05); }
+
+.nav {
+  position: fixed;
+  bottom: 24px;
+  right: 32px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  z-index: 100;
+}
+
+.nav button {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background 0.2s;
+}
+
+.nav button:hover { background: var(--border); }
+
+.nav .counter {
+  color: var(--muted);
+  font-size: 0.95rem;
+  min-width: 60px;
+  text-align: center;
+}
+
+.progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+  z-index: 100;
+}
+
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+
+.small { font-size: 0.95rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<!-- Slide 1: Title -->
+<div class="slide active" id="slide-1">
+  <h1>Team 3</h1>
+  <p class="subtitle">GIC #CODETOIMPACT 2026</p>
+  <p style="font-size:1.3rem; margin-bottom: 32px;">Intraday Trading Bot + Analytics Dashboard</p>
+  <div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:8px;">
+    <span class="tag tag-blue">Di Heng</span>
+    <span class="tag tag-blue">Athithyaa</span>
+    <span class="tag tag-blue">Jovita</span>
+    <span class="tag tag-blue">Kalent</span>
+    <span class="tag tag-blue">Michelle</span>
+    <span class="tag tag-blue">Ivan</span>
+  </div>
+</div>
+
+<!-- Slide 2: The Problem -->
+<div class="slide" id="slide-2">
+  <h2>The Situation We Inherited</h2>
+  <div class="two-col">
+    <div>
+      <h3>What was broken</h3>
+      <ul>
+        <li>Bot crashed on network disconnects (no reconnect)</li>
+        <li>Runaway orders on every price tick (no pending tracking)</li>
+        <li>Session state leaked between trading windows</li>
+        <li>Dashboard polled every 30s (stale data, rate-limit risk)</li>
+        <li>No emergency stop capability</li>
+        <li>UTC timestamps (operations needs SGT)</li>
+        <li>ELXR strategy used wrong lookback (5 instead of 15)</li>
+      </ul>
+    </div>
+    <div>
+      <h3>20 bugs, 12 stakeholders, 0 agreement</h3>
+      <ul>
+        <li>7 must-fix bugs (unflagged &mdash; we triaged)</li>
+        <li>14 P0 defects identified in remediation analysis</li>
+        <li>Conflicting stakeholder requirements</li>
+        <li>No clean spec &mdash; derived from interviews</li>
+        <li>Quant left partial handwritten strategy notes</li>
+      </ul>
+      <p style="margin-top: 20px; color: var(--orange); font-weight: 600;">
+        Principle: fix the engine first, then add the controls.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 3: Delivery Process -->
+<div class="slide" id="slide-3">
+  <h2>Delivery: How We Built It</h2>
+  <div class="grid grid-3">
+    <div class="card">
+      <h3>Triage &amp; Plan</h3>
+      <ul>
+        <li>Read all 12 stakeholder interviews</li>
+        <li>Separated signal from noise</li>
+        <li>Resolved 7 stakeholder conflicts</li>
+        <li>Created 2-hour execution plan</li>
+        <li>5-person parallel assignments</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Hour 1: Safety</h3>
+      <ul>
+        <li>3 people on bot P0 defects</li>
+        <li>2 people on dashboard must-fixes</li>
+        <li>All 7 must-fixes resolved</li>
+        <li>All 14 P0 defects addressed</li>
+        <li>CI green on every push</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Hour 2: Features</h3>
+      <ul>
+        <li>Kill switch (one-click halt)</li>
+        <li>Per-instrument P&amp;L with MCP</li>
+        <li>Order lifecycle &amp; CSV export</li>
+        <li>Pairs strategy (AXON/NOVA)</li>
+        <li>Crash guard &amp; DCA overlay</li>
+      </ul>
+    </div>
+  </div>
+  <div class="stat-row" style="margin-top: 32px; justify-content: center;">
+    <div class="stat"><span class="num">7/7</span><span class="label">Must-fixes resolved</span></div>
+    <div class="stat"><span class="num">14</span><span class="label">P0 defects fixed</span></div>
+    <div class="stat"><span class="num">57+</span><span class="label">Tests passing</span></div>
+    <div class="stat"><span class="num">2</span><span class="label">CI pipelines</span></div>
+  </div>
+</div>
+
+<!-- Slide 4: Trading Strategy -->
+<div class="slide" id="slide-4">
+  <h2>Trading Strategy</h2>
+  <div class="two-col">
+    <div>
+      <h3>Active Strategies</h3>
+      <table>
+        <tr><th>Instrument</th><th>Strategy</th><th>Signal</th></tr>
+        <tr><td>NOVA</td><td>Momentum</td><td>Price trend with wide lookback</td></tr>
+        <tr><td>ELXR</td><td>Mean reversion</td><td>15-sample lookback (corrected)</td></tr>
+        <tr><td>AXON</td><td>Pairs (follows NOVA)</td><td>NOVA breakout &rarr; long AXON</td></tr>
+      </table>
+      <h3>Risk Controls</h3>
+      <ul>
+        <li>Crash guard: 15% drop sells into bids</li>
+        <li>DCA overlay on all instruments</li>
+        <li>Position limits per instrument (500-share cap)</li>
+        <li>OrderManager: one active order per symbol</li>
+        <li>Pending exposure included in risk checks</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Why This Strategy</h3>
+      <ul>
+        <li><strong>NOVA momentum</strong> &mdash; "moves slow and far" (Derek); trending, event-sensitive</li>
+        <li><strong>ELXR mean-reversion</strong> &mdash; defensive, range-bound; the quant's page 2 formula</li>
+        <li><strong>AXON pairs</strong> &mdash; energy costs drive freight (Derek's strongest signal, James's page 4)</li>
+      </ul>
+      <h3>Deliberate Exclusions</h3>
+      <ul>
+        <li><strong>DRFT</strong> &mdash; too illiquid; bot moves its own price</li>
+        <li><strong>Market-making</strong> &mdash; inventory skew bug (Derek's warning)</li>
+        <li><strong>CRVX</strong> &mdash; config exists but needs tuning time</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 5: Solution Architecture -->
+<div class="slide" id="slide-5">
+  <h2>Solution Architecture</h2>
+  <div class="diagram"><span class="highlight">Exchange (api.codetoimpact.sg)</span>
+    |
+    |&mdash;&mdash; SSE feed (price, trade, session, announcement)
+    |         |
+    |    <span class="green">[Python Trading Bot]</span>        <span class="green">[JS Dashboard]</span>
+    |    &bull; Event queue (bounded)       &bull; EventSource connection
+    |    &bull; Worker thread               &bull; Real-time DOM updates
+    |    &bull; Strategy router             &bull; Stale-value clearing
+    |    &bull; Risk engine                 &bull; Kill switch button
+    |    &bull; OrderManager                |
+    |    &bull; Control API (:8092)  &lt;&mdash;&mdash;&mdash;-+
+    |         |
+    |&mdash;&mdash; REST API (orders, portfolio, instruments)
+    |         |
+    |    <span class="orange">[MCP Read Server]</span>         <span class="green">[Dashboard server.js]</span>
+    |    &bull; get_portfolio               &bull; Key-injecting proxy
+    |    &bull; get_positions               &bull; /exchange/* &rarr; API
+    |    &bull; get_pnl                     &bull; /bot/* &rarr; :8092
+    |    &bull; get_session_summary
+    |    &bull; REST facade (:8090)</div>
+  <p class="small" style="margin-top: 12px;">Three isolated processes. API key never reaches the browser. Dashboard proxies all authenticated requests through server.js.</p>
+</div>
+
+<!-- Slide 6: Key Architecture Decisions -->
+<div class="slide" id="slide-6">
+  <h2>Architecture Choices</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h3>Event Queue Decoupling</h3>
+      <p>SSE events go into a bounded queue. Trading logic runs in a separate worker thread. This prevents REST calls from blocking feed ingestion and eliminates the 300-calls/30s burn rate.</p>
+    </div>
+    <div class="card">
+      <h3>Key-Injecting Proxy</h3>
+      <p>server.js injects X-API-Key into proxied requests. The browser never sees the team key. Dashboard fetches go to /exchange/* which the proxy routes to the real API.</p>
+    </div>
+    <div class="card">
+      <h3>MCP with REST Facade</h3>
+      <p>MCP server exposes both MCP protocol (for AI tools) and a REST facade (for the browser). Dashboard calls REST directly for P&amp;L; AI panel would use MCP tools.</p>
+    </div>
+    <div class="card">
+      <h3>Session Lifecycle Awareness</h3>
+      <p>Bot detects session ID changes and clears all state (price history, pending orders, cached positions). Prevents stale data from leaking between trading windows.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 7: AI Usage -->
+<div class="slide" id="slide-7">
+  <h2>AI: How We Built With AI</h2>
+  <div class="two-col">
+    <div>
+      <h3>Development Workflow</h3>
+      <ul>
+        <li><span class="tag tag-blue">Spec first</span> Define behaviour before generation</li>
+        <li><span class="tag tag-green">Generate</span> AI produces code + tests from spec</li>
+        <li><span class="tag tag-orange">Review</span> Human reviews for correctness &amp; security</li>
+        <li><span class="tag tag-purple">Verify</span> Tests in CI + browser verification</li>
+      </ul>
+      <h3 style="margin-top: 24px;">Tools Used</h3>
+      <table>
+        <tr><th>Tool</th><th>Used For</th></tr>
+        <tr><td>Copilot</td><td>Inline completion, boilerplate</td></tr>
+        <tr><td>Codex</td><td>Bot: strategies, feed, orders, lifecycle</td></tr>
+        <tr><td>Claude Code</td><td>Dashboard: SSE, P&amp;L, export, kill switch, tests</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>What AI Wrote vs What Humans Reviewed</h3>
+      <ul>
+        <li><strong>AI wrote:</strong> Implementation code, unit tests, boilerplate</li>
+        <li><strong>Humans reviewed:</strong> Order sizing, race conditions, rate-limit compliance, cost-basis math, security (XSS, key exposure)</li>
+      </ul>
+      <h3>Responsible AI Practice</h3>
+      <ul>
+        <li>No unreviewed merges to main</li>
+        <li>No secrets in generated code</li>
+        <li>No application LLM feature shipped without responsible-AI guardrails</li>
+        <li>AI conversational panel deferred rather than shipped with hallucinated confidence</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 8: AI in the Product -->
+<div class="slide" id="slide-8">
+  <h2>AI: Building AI Into the Solution</h2>
+  <div class="two-col">
+    <div>
+      <h3>What's Ready</h3>
+      <div class="card" style="margin-top: 12px;">
+        <p><strong>MCP Read Server</strong> &mdash; running, tested, dual-surface</p>
+        <ul>
+          <li>get_portfolio, get_positions, get_pnl, get_session_summary</li>
+          <li>REST facade for browser consumption</li>
+          <li>MCP protocol for AI tool integration</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top: 12px;">
+        <p><strong>SSE Announcement Pipeline</strong> &mdash; events parsed and rendered</p>
+        <ul>
+          <li>Announcement events from exchange feed</li>
+          <li>Ready for LLM-based impact analysis</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <h3>What's Planned (Organizer LLM)</h3>
+      <div class="card" style="margin-top: 12px;">
+        <p><strong>Conversational Control Panel</strong></p>
+        <ul>
+          <li>"What's my P&amp;L on NOVA?" &rarr; MCP get_pnl</li>
+          <li>"Why did we buy AXON at 14:32?" &rarr; order journal</li>
+          <li>Citations with source and timestamp</li>
+          <li>Uncertainty labelling on estimates</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top: 12px;">
+        <p><strong>Announcement Impact Analysis</strong></p>
+        <ul>
+          <li>Supply-chain reasoning across 5 instruments</li>
+          <li>Advisory mode (no auto-trading)</li>
+          <li>Confidence and source disclosure</li>
+        </ul>
+      </div>
+      <p class="small" style="margin-top: 16px;">All AI features must use llm.codetoimpact.sg and follow responsible-AI practice: cite sources, label uncertainty, disclose missing data.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 9: SDLC -->
+<div class="slide" id="slide-9">
+  <h2>SDLC Practice</h2>
+  <div class="grid grid-3">
+    <div class="card">
+      <h3>Version Control</h3>
+      <ul>
+        <li>Feature branches per person/task</li>
+        <li>Pull requests with review</li>
+        <li>Meaningful commit messages</li>
+        <li>No secrets committed</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Testing &amp; CI</h3>
+      <ul>
+        <li>15+ bot tests (pytest)</li>
+        <li>42 dashboard tests (Node --test)</li>
+        <li>Two GitHub Actions pipelines</li>
+        <li>Lint + test on every push</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Reproducibility</h3>
+      <ul>
+        <li>Pinned dependencies (requirements.txt)</li>
+        <li>Zero npm dependencies (Node built-ins)</li>
+        <li>Documented run instructions</li>
+        <li>Sandbox/live separation</li>
+      </ul>
+    </div>
+  </div>
+  <div class="grid grid-2" style="margin-top: 24px;">
+    <div class="card">
+      <h3>Team Process</h3>
+      <ul>
+        <li>5-person execution plan with clear ownership</li>
+        <li>Minute-0 interface agreement (queue, OrderManager, data flow)</li>
+        <li>Hour 1: safety foundation; Hour 2: features</li>
+        <li>Last 15 min: integration test, smoke test, git hygiene</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>AI-Assisted Development</h3>
+      <ul>
+        <li>Spec-driven generation (not prompt-and-pray)</li>
+        <li>Human review of every AI-generated change</li>
+        <li>AI wrote code &amp; tests; humans reviewed logic &amp; security</li>
+        <li>Development record in CLAUDE.md</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 10: Stakeholder Decisions -->
+<div class="slide" id="slide-10">
+  <h2>Key Decisions We Made</h2>
+  <table>
+    <tr><th>Decision</th><th>Our Call</th><th>Rationale</th></tr>
+    <tr>
+      <td>Kill switch UX</td>
+      <td><span class="tag tag-green">One click, no confirmation</span></td>
+      <td>Priya, Derek, Clarissa all agree. Parameter changes get two-step confirmation separately.</td>
+    </tr>
+    <tr>
+      <td>DRFT trading</td>
+      <td><span class="tag tag-red">Off</span></td>
+      <td>Derek: "the bot moves its own price." Not worth the risk in 30-minute scored windows.</td>
+    </tr>
+    <tr>
+      <td>Strategy lookback</td>
+      <td><span class="tag tag-blue">Last N prices</span></td>
+      <td>Feed timing is irregular; count-based is deterministic and testable.</td>
+    </tr>
+    <tr>
+      <td>Dashboard importance</td>
+      <td><span class="tag tag-green">Kept</span></td>
+      <td>Derek said "doesn't matter" but risk, ops, and exec all depend on it.</td>
+    </tr>
+    <tr>
+      <td>AI panel</td>
+      <td><span class="tag tag-orange">Deferred</span></td>
+      <td>Better no AI than rushed AI with hallucinated confidence. MCP layer is ready.</td>
+    </tr>
+    <tr>
+      <td>Mobile layout</td>
+      <td><span class="tag tag-red">Descoped</span></td>
+      <td>Junior request; no functional impact; time better spent on safety.</td>
+    </tr>
+  </table>
+</div>
+
+<!-- Slide 11: What Works Demo -->
+<div class="slide" id="slide-11">
+  <h2>What Works: Live Capabilities</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h3>Trading Bot</h3>
+      <ul>
+        <li>Connects to exchange SSE, reconnects on failure</li>
+        <li>Trades NOVA (momentum) and ELXR (mean-reversion)</li>
+        <li>AXON pairs strategy (follows NOVA breakouts)</li>
+        <li>Crash guard: 15% drop sells into bids</li>
+        <li>DCA overlay on all instruments</li>
+        <li>Graceful shutdown: cancel all resting orders</li>
+        <li>Emergency halt: POST /halt blocks + cancels</li>
+        <li>Session-aware: resets on window boundaries</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Dashboard</h3>
+      <ul>
+        <li>Real-time prices via SSE (not polling)</li>
+        <li>Per-instrument P&amp;L from MCP (with fallback)</li>
+        <li>Session counters: buy/sell/partial/rejected</li>
+        <li>Order lifecycle table with exact status codes</li>
+        <li>HALT BOT button (one click, state indicator)</li>
+        <li>CSV export in Gerald's fixed schema</li>
+        <li>"Reconnecting..." on feed drop</li>
+        <li>All 5 instruments, SGT timestamps</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 12: Reflection -->
+<div class="slide" id="slide-12">
+  <h2>Reflection</h2>
+  <div class="grid grid-3">
+    <div class="card">
+      <h3>What We Did Well</h3>
+      <ul>
+        <li>Prioritised safety over features &mdash; fixed the engine before adding controls</li>
+        <li>Resolved 7 stakeholder conflicts with defensible rationale</li>
+        <li>All 7 must-fixes and 14 P0 defects addressed</li>
+        <li>AI-assisted but human-reviewed &mdash; spec-driven workflow</li>
+        <li>57+ tests, 2 CI pipelines, zero npm dependencies</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>What Could Be Better</h3>
+      <ul>
+        <li>AI conversational panel not shipped &mdash; MCP layer ready but LLM integration deferred</li>
+        <li>No price charts &mdash; valuable for traders but high effort without a charting library</li>
+        <li>DRFT and CRVX not traded &mdash; conservative strategy leaves alpha on the table</li>
+        <li>ATR regime detection not implemented &mdash; James's page 3 needs tuning time</li>
+        <li>Bot heartbeat partially done (emits but dashboard doesn't consume)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>What We Enjoyed</h3>
+      <ul>
+        <li>Reading conflicting stakeholder interviews and making judgment calls</li>
+        <li>The pressure of fixing P0 defects before scored windows</li>
+        <li>Seeing the dashboard light up with real-time data</li>
+        <li>AI-assisted development at speed with meaningful review</li>
+        <li>Building something we'd put in front of a trading desk</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 13: Thank You -->
+<div class="slide" id="slide-13">
+  <h1>Thank You</h1>
+  <p class="subtitle">Team 3 &mdash; GIC #CODETOIMPACT 2026</p>
+  <div style="margin-top: 40px;">
+    <p style="font-size: 1.2rem; color: var(--muted);">
+      "Works, doesn't crash, can be stopped." &mdash; Winston Lam, Deputy COO
+    </p>
+  </div>
+  <div style="margin-top: 40px; display: flex; gap: 16px; flex-wrap: wrap;">
+    <span class="tag tag-green">7/7 must-fixes</span>
+    <span class="tag tag-green">14 P0 defects</span>
+    <span class="tag tag-green">57+ tests</span>
+    <span class="tag tag-green">2 CI pipelines</span>
+    <span class="tag tag-blue">3 strategies</span>
+    <span class="tag tag-blue">Kill switch</span>
+    <span class="tag tag-blue">Real-time SSE</span>
+    <span class="tag tag-blue">MCP integration</span>
+  </div>
+</div>
+
+<!-- Navigation -->
+<div class="nav">
+  <button onclick="prev()">&larr; Prev</button>
+  <span class="counter" id="counter">1 / 13</span>
+  <button onclick="next()">Next &rarr;</button>
+</div>
+
+<script>
+let current = 1;
+const total = 13;
+
+function show(n) {
+  if (n < 1 || n > total) return;
+  document.querySelector('.slide.active').classList.remove('active');
+  current = n;
+  document.getElementById('slide-' + n).classList.add('active');
+  document.getElementById('counter').textContent = n + ' / ' + total;
+  document.getElementById('progress').style.width = ((n / total) * 100) + '%';
+}
+
+function next() { show(current + 1); }
+function prev() { show(current - 1); }
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); next(); }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+  if (e.key === 'Home') { e.preventDefault(); show(1); }
+  if (e.key === 'End') { e.preventDefault(); show(total); }
+});
+
+document.getElementById('progress').style.width = ((1 / total) * 100) + '%';
+</script>
+
+</body>
+</html>

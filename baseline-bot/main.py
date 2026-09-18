@@ -10,6 +10,7 @@ Threads:
     Heartbeat       every ~5s: liveness snapshot + feed-stall watchdog
     main            waits for the shutdown event, then exits 0/1
 """
+import importlib
 import os
 import signal
 import sys
@@ -19,13 +20,20 @@ import yaml
 
 from exchange.client import ExchangeClient
 from exchange.feed import SSEFeed
+from exchange.orderbook import OrderBookCache
 from exchange.ratelimit import RollingWindow
 from orders.manager import OrderManager
 from risk.crash_guard import CrashGuard, CrashResponder
+from risk.exits import ExitPolicy
 from risk.limits import RiskLimits
+from strategies.base import Signal
 from strategies.dca import DcaOverlay
 from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
+from news.engine import NewsEngine
+from news.sentiment import SentimentAnalyzer
+from strategies.pairs import PairsFollowStrategy
+from strategies.regime_policy import RegimePolicy, StaticRegimeClassifier
 from utils.control import ControlServer
 from utils.event_worker import EventWorker
 from utils.heartbeat import Heartbeat
@@ -118,12 +126,213 @@ def validate_config(config):
     return config
 
 
-def build_strategy(symbol, strat_cfg):
-    if strat_cfg["type"] == "momentum":
+def build_strategy(symbol, strat_cfg, built=None):
+    """Construct one strategy.
+
+    `built` supplies the already-constructed strategies, needed only by types
+    that read another instrument's price series (pairs_follow reads its leader).
+    """
+    kind = strat_cfg["type"]
+    if kind == "momentum":
         return MomentumStrategy(symbol, strat_cfg)
-    if strat_cfg["type"] == "mean_reversion":
+    if kind == "mean_reversion":
         return MeanReversionStrategy(symbol, strat_cfg)
-    raise ValueError(f"unknown strategy type: {strat_cfg['type']}")
+    if kind == "pairs_follow":
+        leader_symbol = strat_cfg["leader"]
+        leader = (built or {}).get(leader_symbol)
+        if leader is None:
+            raise ValueError(
+                f"{symbol}: leader {leader_symbol!r} is not an active strategy; "
+                f"add it to instruments.active and strategy")
+        return PairsFollowStrategy(symbol, strat_cfg, leader)
+    raise ValueError(f"unknown strategy type: {kind}")
+
+
+def build_strategies(config):
+    """Build every active strategy, resolving followers after their leaders.
+
+    Two passes rather than one: a follower holds a reference to its leader's
+    live price buffer, so leaders must exist first regardless of the order
+    symbols happen to appear in config.
+    """
+    active = config["instruments"]["active"]
+    wanted = [active["primary"], active["secondary"]]
+    # Extras are optional — an instrument listed without a strategy block is
+    # simply not traded, which is how a name gets parked without code changes.
+    wanted += [s for s in active.get("extra", []) if s in config["strategy"]]
+
+    strategies = {}
+    deferred = []
+    for symbol in wanted:
+        strat_cfg = config["strategy"][symbol]
+        if strat_cfg["type"] == "pairs_follow":
+            deferred.append(symbol)
+        else:
+            strategies[symbol] = build_strategy(symbol, strat_cfg)
+    for symbol in deferred:
+        strategies[symbol] = build_strategy(
+            symbol, config["strategy"][symbol], strategies)
+    return strategies
+
+
+def build_regime_classifier(regime_cfg):
+    """Resolve the regime classifier named in config.
+
+    The classifier is somebody else's component; this only has to find it. Point
+    `regime.classifier` at a dotted path to a zero-argument callable or class
+    implementing strategies.regime_policy.RegimeClassifier (observe + classify).
+
+    With the policy enabled and no classifier configured, this raises rather
+    than defaulting: an absent classifier would mean every symbol reads WARMUP,
+    and WARMUP forbids entries, so the bot would stop trading without saying so.
+    """
+    path = regime_cfg.get("classifier")
+    if not path:
+        static = regime_cfg.get("static_regime")
+        if static:
+            # Escape hatch for a demo or a bisect: pin every symbol to one
+            # regime without standing up the real classifier.
+            log(f"regime: using StaticRegimeClassifier({static})")
+            return StaticRegimeClassifier(static)
+        raise ValueError(
+            "regime.enabled is true but regime.classifier is not set; set it to "
+            "the dotted path of a RegimeClassifier implementation, or set "
+            "regime.static_regime to pin one regime, or disable regime")
+
+    module_name, _, attr = path.rpartition(".")
+    if not module_name:
+        raise ValueError(f"regime.classifier {path!r} must be a dotted path")
+    module = importlib.import_module(module_name)
+    try:
+        factory = getattr(module, attr)
+    except AttributeError as exc:
+        raise ValueError(f"regime.classifier {path!r} not found") from exc
+
+    instance = factory()
+    for method in ("observe", "classify"):
+        if not callable(getattr(instance, method, None)):
+            raise ValueError(
+                f"regime.classifier {path!r} has no {method}(); it must "
+                f"implement strategies.regime_policy.RegimeClassifier")
+    log(f"regime: classifier {path}")
+    return instance
+
+
+def make_price_handler(strategies, orders, state, lifecycle, exits=None,
+                       news_engine=None, regime_policy=None, classifier=None,
+                       crash=None, dca=None):
+    """Build the handler for `price` events.
+
+    Module level rather than a closure inside main() so the trading path can be
+    exercised without standing up the feed, the worker and the control server.
+
+    Every order goes through OrderManager and only OrderManager. Submitting
+    directly from here would bypass the one-active-order-per-symbol policy, the
+    position cap measured against pending exposure, the unreconciled-key gate,
+    the cash pre-check and the rate limiter.
+    """
+    def on_price(payload):
+        if lifecycle["value"] != RUNNING:
+            return
+
+        symbol = payload.get("symbol")
+        last_price = payload.get("last_price")
+        strat = strategies.get(symbol)
+        if strat is not None:
+            strat.on_price(last_price)
+        # Feed the mark even when the session is closed: correlated-group
+        # exposure is measured in notional, and a symbol that has not ticked
+        # this window would otherwise be valued at 0.
+        orders.record_mark(symbol, last_price)
+        # The classifier keeps its own buffers, so it observes every print
+        # of a traded instrument whether or not the session is open.
+        if classifier is not None and strat is not None:
+            classifier.observe(symbol, int(last_price))
+        if not state["session_open"]:
+            return
+        # Crash guard runs first and on every discovered instrument, strategy
+        # or not: a collapse dumps the position before any strategy gets a say.
+        if crash is not None:
+            crash.on_price(symbol, last_price)
+            if not crash.allows_strategy(symbol):
+                return
+        # DCA overlay runs on every instrument, strategy or not, and never sells.
+        if dca is not None:
+            dca.on_price(symbol, last_price)
+        if strat is None:
+            return
+        orders.poll()
+
+        # Held shares net of those reserved by our own resting sells. Both the
+        # exit check and the strategy's sell branch size off this, so neither
+        # oversells into a 400 INSUFFICIENT_POSITION. The buy-side cap is
+        # enforced inside OrderManager against projected exposure.
+        sellable = orders.available_to_sell(symbol)
+
+        # Stop-loss / take-profit run BEFORE the strategy and return instead of
+        # it. An exit the strategy can veto is not an exit — momentum riding a
+        # loser would simply never produce the sell. The mark is the live SSE
+        # print rather than the portfolio's ~1s cached one: an exit wants the
+        # freshest price available.
+        if exits is not None:
+            forced = exits.check(symbol, orders.avg_cost(symbol),
+                                 int(payload["last_price"]), sellable)
+            if forced is not None:
+                log(f"exit: {forced}")
+                orders.submit_intent(symbol, "sell", forced.quantity,
+                                     forced.limit_price)
+                return
+
+        signal = strat.signal(sellable)
+        last_price = strat.prices[-1] if strat.prices else None
+
+        bias = news_engine.active_bias(symbol) if news_engine else None
+        if bias:
+            if bias.action == "pause":
+                return
+            news_qty = max(1, int(strat.trade_quantity * bias.size_multiplier))
+            if signal is not None:
+                if bias.action == "buy" and signal.side == "sell":
+                    log(f"news: suppressing sell for {symbol} (bullish bias)")
+                    return
+                if bias.action == "sell" and signal.side == "buy":
+                    log(f"news: suppressing buy for {symbol} (bearish bias)")
+                    return
+                if bias.action == signal.side:
+                    signal.quantity = max(signal.quantity, news_qty)
+            elif last_price is not None:
+                if bias.action == "buy":
+                    offset = last_price * strat.limit_offset_bps // 10_000
+                    signal = Signal("buy", news_qty, last_price + offset)
+                    log(f"news: generating buy for {symbol} (bullish bias, no strategy signal)")
+                elif bias.action == "sell" and sellable > 0:
+                    sell_qty = min(news_qty, sellable)
+                    offset = last_price * strat.limit_offset_bps // 10_000
+                    signal = Signal("sell", sell_qty, last_price - offset)
+                    log(f"news: generating sell for {symbol} (bearish bias, no strategy signal)")
+
+        if signal is None:
+            return
+
+        # Regime runs LAST, as the final gate on how much risk we add. News can
+        # enlarge or generate a signal; regime can only trim or veto it, and it
+        # never touches a sell — a market-state label must not be able to trap
+        # us in a position. James p.3 is the source for the table itself.
+        if regime_policy is not None and classifier is not None:
+            before = signal.quantity
+            signal = regime_policy.apply(symbol, strat, signal, classifier)
+            if signal is None:
+                log(f"regime: no entry for {symbol} in "
+                    f"{regime_policy.regime_for(strat, classifier)}")
+                return
+            if signal.quantity != before:
+                log(f"regime: {symbol} buy trimmed {before} -> "
+                    f"{signal.quantity} in "
+                    f"{regime_policy.regime_for(strat, classifier)}")
+
+        orders.submit_intent(symbol, signal.side, signal.quantity, signal.limit_price)
+
+    return on_price
 
 
 # ---------------------------------------------------------------------------
@@ -183,6 +392,92 @@ def halt(orders, lifecycle, shutdown_event, feed=None, worker=None):
     return len(unresolved)
 
 
+class Bot:
+    def __init__(self, client, config, trade=False):
+        self.client = client
+        self.config = config
+        self.trade = trade
+        self.session_id = None
+        self.unknown_key = None
+        self.stopping = threading.Event()
+
+        primary = config["instruments"]["active"]["primary"]
+        secondary = config["instruments"]["active"]["secondary"]
+        self.strategies = build_strategies(config)
+        self.risk = RiskLimits(
+            config["risk"]["max_position_primary"],
+            config["risk"]["max_position_secondary"],
+            primary, secondary,
+            extra_limits=config["risk"].get("max_position", {}),
+            correlated_groups=config["risk"].get("correlated_groups", {}),
+        )
+
+    def evaluate(self, strategy):
+        session = self.client.get_session()
+        new_id = session.get("id")
+        if new_id and new_id != self.session_id:
+            for s in self.strategies.values():
+                s.reset()
+            self.session_id = new_id
+
+        if session.get("mode") == "live":
+            return
+        if not self.trade:
+            return
+
+        orders = self.client.get_orders()
+
+        if self.unknown_key:
+            if any(o.get("idempotency_key") == self.unknown_key for o in orders):
+                self.unknown_key = None
+            else:
+                return
+
+        if any(
+            o.get("symbol") == strategy.symbol
+            and o.get("status") in ("OPEN", "PARTIALLY_FILLED")
+            for o in orders
+        ):
+            return
+
+        position = self.client.get_positions(strategy.symbol)
+        signal = strategy.signal(position)
+        if signal is None:
+            return
+
+        if signal.side == "buy" and not self.risk.allows_buy(
+            strategy.symbol, position, signal.quantity
+        ):
+            return
+
+        key = str(uuid.uuid4())
+        try:
+            self.client.submit_limit_order(
+                strategy.symbol, signal.side, signal.quantity, signal.limit_price, key,
+            )
+        except Exception:
+            self.unknown_key = key
+            raise
+
+    def shutdown(self):
+        orders = self.client.get_orders()
+        for order in orders:
+            if order.get("status") in ("OPEN", "PARTIALLY_FILLED"):
+                self.client.cancel_order(order["id"])
+        time.sleep(1)
+        self.client.get_orders()
+        self.stopping.set()
+        return True
+
+    def on_price(self, payload):
+        symbol = payload.get("symbol")
+        strategy = self.strategies.get(symbol)
+        if strategy is None:
+            return
+        strategy.on_price(payload["last_price"])
+        self.evaluate(strategy)
+
+
 def main():
     config = load_config()
     client = ExchangeClient(config["exchange"]["base_url"], config["exchange"]["api_key"])
@@ -194,15 +489,14 @@ def main():
 
     primary = config["instruments"]["active"]["primary"]
     secondary = config["instruments"]["active"]["secondary"]
-    strategies = {
-        primary: build_strategy(primary, config["strategy"][primary]),
-        secondary: build_strategy(secondary, config["strategy"][secondary]),
-    }
+    strategies = build_strategies(config)
     risk = RiskLimits(
         config["risk"]["max_position_primary"],
         config["risk"]["max_position_secondary"],
         primary, secondary,
         max_position_default=config["risk"].get("max_position_default", 0),
+        extra_limits=config["risk"].get("max_position", {}),
+        correlated_groups=config["risk"].get("correlated_groups", {}),
     )
 
     limits = config.get("rate_limits", {})
@@ -218,10 +512,56 @@ def main():
         anomaly_pause_seconds=risk_cfg.get("anomaly_pause_seconds", 60),
     )
 
-    # Report starting positions from one portfolio read.
-    portfolio = client.get_portfolio()
-    for sym in strategies:
-        log(f"{sym} starting position: {client.position_detail(sym, portfolio)['quantity']}")
+    ob_cfg = config.get("orderbook", {})
+    book_cache = OrderBookCache(
+        stale_seconds=float(ob_cfg.get("stale_threshold_seconds", 5)),
+    )
+
+    # Attach book cache to each strategy for book-aware pricing + spread filter.
+    spread_limits = ob_cfg.get("max_spread_bps", {})
+    for sym, strat in strategies.items():
+        strat.orderbook = book_cache
+        if sym in spread_limits:
+            strat.max_spread_bps = float(spread_limits[sym])
+
+    exits = ExitPolicy(
+        config["risk"].get("exits", {}),
+        limit_offset_bps=config["risk"].get("exit_limit_offset_bps", 25),
+        orderbook=book_cache,
+    )
+
+    # --- news engine -----------------------------------------------------------
+    news_cfg = config.get("news", {})
+    news_engine = None
+    if news_cfg.get("enabled"):
+        # Tier 1 (S1): the LLM reasons across the supply chain. It authenticates
+        # with the same secret as the exchange — the service has no separate key.
+        analyzer = SentimentAnalyzer(
+            news_cfg.get("llm", {}),
+            api_key=config["exchange"]["api_key"],
+            allowed_symbols=strategies.keys(),
+        )
+        news_engine = NewsEngine(news_cfg, analyzer=analyzer)
+        log(f"news engine enabled; llm sentiment {analyzer.stats()}")
+
+    # --- regime policy (James Wee, page 3) -----------------------------------
+    # The classifier is a separate component. Until it is wired, the policy is
+    # off: a policy with no classifier would treat every symbol as WARMUP and
+    # silently stop trading, so this fails loudly instead.
+    regime_policy = RegimePolicy(config.get("regime", {}))
+    classifier = None
+    if regime_policy.enabled:
+        classifier = build_regime_classifier(config.get("regime", {}))
+        log(f"regime policy enabled: {regime_policy.table()}")
+
+    # Report starting positions and the risk parameters in force.
+    for sym, strat in strategies.items():
+        log(f"{sym} [{type(strat).__name__}] starting position: "
+            f"{client.get_positions(sym)}, cap {risk.max_position(sym)}, "
+            f"exits {exits.levels(sym)}")
+    for name, group in risk.groups().items():
+        log(f"correlated group {name}: {'+'.join(group['symbols'])} capped at "
+            f"{group['max_notional_cents']} cents notional")
 
     # --- crash guard (all discovered instruments) ---------------------------
     cg = config.get("crash_guard") or {}
@@ -283,6 +623,12 @@ def main():
 
     # --- event handlers -----------------------------------------------------
 
+    def on_book_update(payload):
+        symbol = payload.get("symbol")
+        if symbol:
+            book_cache.update(symbol, payload.get("bids", []),
+                              payload.get("asks", []))
+
     def on_session(payload):
         new_status = payload.get("status")
 
@@ -299,7 +645,16 @@ def main():
             log(f"session boundary: {state['session_id']} -> {new_id} — resetting "
                 f"strategies and order state")
             for strat in strategies.values():
-                strat.prices.clear()
+                strat.reset()
+            exits.reset()
+            book_cache.reset()
+            # The classifier's price history is per-window too: each window
+            # re-anchors the price engine, so a series spanning two would show
+            # a jump that happened in neither.
+            if classifier is not None and hasattr(classifier, "reset"):
+                classifier.reset()
+            if news_engine:
+                news_engine.reset()
             state["session_id"] = new_id
             orders.reset_for_session(new_id)
             if crash is not None:
@@ -307,48 +662,28 @@ def main():
             if dca is not None:
                 dca.reset_for_session()
 
-    def on_price(payload):
-        if lifecycle["value"] != RUNNING:
-            return
+    on_price = make_price_handler(strategies, orders, state, lifecycle, exits,
+                                  news_engine=news_engine,
+                                  regime_policy=regime_policy,
+                                  classifier=classifier,
+                                  crash=crash, dca=dca)
 
-        symbol = payload.get("symbol")
-        last_price = payload.get("last_price")
-        strat = strategies.get(symbol)
-        if strat is not None:
-            strat.on_price(last_price)
-        if not state["session_open"]:
+    def on_announcement(payload):
+        log(
+            f"announcement #{payload.get('announcement_id')} "
+            f"[{payload.get('affected_symbol')}]: {payload.get('message')}"
+        )
+        if lifecycle["value"] != RUNNING or not state["session_open"]:
             return
-        # Crash guard runs first and on every instrument, strategy or not:
-        # a 15% collapse dumps the position before any strategy gets a say.
-        if crash is not None:
-            crash.on_price(symbol, last_price)
-            if not crash.allows_strategy(symbol):
-                return
-        # DCA runs on every instrument, strategy or not, and never sells.
-        if dca is not None:
-            dca.on_price(symbol, last_price)
-        if strat is None:
-            return
-        # Runs on the trading worker thread, never on the SSE reader: REST
-        # calls here cannot block feed ingestion.
-        orders.poll()
-        # The strategies take one `position` argument, used only to decide
-        # whether they may sell and how much. Pass what is actually sellable —
-        # held shares minus those already reserved by our own resting sells —
-        # rather than the gross long, which oversells into INSUFFICIENT_POSITION.
-        # The buy-side cap is enforced inside OrderManager against projected
-        # exposure, which includes pending orders.
-        signal = strat.signal(orders.available_to_sell(symbol))
-        if signal is None:
-            return
-        # Refusals, rejections and unknowns are all logged and journalled by
-        # OrderManager. Nothing is reported as submitted unless the exchange
-        # acknowledged it.
-        orders.submit_intent(symbol, signal.side, signal.quantity, signal.limit_price)
+        if news_engine:
+            news_engine.on_announcement(payload)
 
     # --- feed, worker, heartbeat ---------------------------------------------
     feed = SSEFeed(config["exchange"]["base_url"], config["exchange"]["api_key"])
-    worker = EventWorker({"session": on_session, "price": on_price})
+    worker = EventWorker({
+        "session": on_session, "price": on_price, "announcement": on_announcement,
+        "book_update": on_book_update,
+    })
     hb_cfg = config.get("heartbeat", {})
     heartbeat = Heartbeat(
         feed, worker=worker, lifecycle=lifecycle, orders=orders,
@@ -395,6 +730,7 @@ def main():
         host=control_cfg.get("host", "127.0.0.1"),
         port=int(os.environ.get("BOT_CONTROL_PORT") or control_cfg.get("port", 8092)),
         events_fn=orders.journal_page,
+        news_engine=news_engine,
     )
     control.start()
 
@@ -402,6 +738,8 @@ def main():
     worker.start()
     feed.on("session", lambda payload: worker.submit("session", payload))
     feed.on("price", lambda payload: worker.submit("price", payload))
+    feed.on("announcement", lambda payload: worker.submit("announcement", payload))
+    feed.on("book_update", lambda payload: worker.submit("book_update", payload))
     feed.start()
     heartbeat.start()
     log("bot started")

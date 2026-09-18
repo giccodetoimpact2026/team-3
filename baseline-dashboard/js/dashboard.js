@@ -62,6 +62,8 @@ const DashboardController = {
     });
     $("#export-csv").on("click", this.exportCsv.bind(this));
     $("#kill-switch").on("click", this.haltBot.bind(this));
+    this.bindNewsControls();
+    this.loadNewsConfig();
     this.pollBotStatus();
     setInterval(this.pollBotStatus.bind(this), CONFIG.BOT_STATUS_INTERVAL_MS);
 
@@ -746,6 +748,83 @@ const DashboardController = {
     var $dot = $("#connectivity-dot");
     $dot.removeClass("online offline").addClass(online ? "online" : "offline");
     $("#connectivity-label").text(online ? "ONLINE" : "OFFLINE");
+  },
+
+  // --- News settings --------------------------------------------------------
+
+  _newsConfig: null,
+
+  loadNewsConfig: function () {
+    var self = this;
+    $.getJSON("/bot/news/config").done(function (cfg) {
+      self._newsConfig = cfg;
+      self.renderNewsConfig(cfg);
+      $("#news-settings").show();
+    }).fail(function () {
+      $("#news-settings").hide();
+    });
+  },
+
+  renderNewsConfig: function (cfg) {
+    $("#news-enabled").prop("checked", cfg.enabled);
+    $("#news-cooldown").val(cfg.cooldown_seconds);
+    $("#news-ttl").val(cfg.directive_ttl_seconds);
+    $("#news-default-mult").val(cfg.default_size_multiplier);
+    $("#news-default-mult-val").text(Number(cfg.default_size_multiplier).toFixed(2));
+
+    var $sym = $("#news-symbol-multipliers").empty();
+    var mult = cfg.size_multiplier || {};
+    Object.keys(mult).sort().forEach(function (symbol) {
+      var id = "news-mult-" + symbol;
+      var val = mult[symbol];
+      $sym.append(
+        '<div class="news-field">' +
+          '<label for="' + id + '">' + escapeHtml(symbol) + '</label>' +
+          '<input type="range" id="' + id + '" data-symbol="' + escapeHtml(symbol) + '"' +
+          ' class="news-sym-slider" min="0" max="1.5" step="0.05" value="' + val + '" />' +
+          '<span class="range-val" id="' + id + '-val">' + Number(val).toFixed(2) + '</span>' +
+        '</div>'
+      );
+    });
+  },
+
+  bindNewsControls: function () {
+    var self = this;
+
+    function post(patch) {
+      $.ajax({
+        url: "/bot/news/config",
+        method: "POST",
+        contentType: "application/json",
+        data: JSON.stringify(patch),
+      }).done(function (cfg) {
+        self._newsConfig = cfg;
+      });
+    }
+
+    $("#news-enabled").on("change", function () {
+      post({ enabled: this.checked });
+    });
+    $("#news-cooldown").on("change", function () {
+      post({ cooldown_seconds: Number(this.value) });
+    });
+    $("#news-ttl").on("change", function () {
+      post({ directive_ttl_seconds: Number(this.value) });
+    });
+    $("#news-default-mult").on("input", function () {
+      $("#news-default-mult-val").text(Number(this.value).toFixed(2));
+    }).on("change", function () {
+      post({ default_size_multiplier: Number(this.value) });
+    });
+    $(document).on("input", ".news-sym-slider", function () {
+      $("#" + this.id + "-val").text(Number(this.value).toFixed(2));
+    });
+    $(document).on("change", ".news-sym-slider", function () {
+      var sym = $(this).data("symbol");
+      var patch = { size_multiplier: {} };
+      patch.size_multiplier[sym] = Number(this.value);
+      post(patch);
+    });
   },
 
   // --- Export (Gerald's fixed schema) --------------------------------------

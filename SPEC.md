@@ -19,6 +19,13 @@ exit non-zero when any remain. A burst above `max_orders_per_minute` pauses new 
 (BUG-003). Startup validation rejects a placeholder key, non-positive sizes or
 lookbacks, thresholds outside (0,1), bad ports and heartbeat timings.
 
+A price-only regime classifier emits warmup, compression, range, neutral, directional
+trend and directional shock results from ATR-like volatility and directional efficiency,
+with transitions and explanatory metrics; a regime policy can size or suppress entries
+from it. Exits (stop-loss, fixed and trailing take-profit) override strategy signals;
+correlated groups cap joint notional (NOVA+AXON); the news engine biases sizing from
+announcements, with LLM sentiment reasoning across the supply chain.
+
 Acceptance: local strategy/runtime tests and lint pass; an authenticated sandbox check
 and trading smoke test remain pending a locally configured team key. No profitability
 claim is made. SIGKILL or network loss can prevent shutdown cancellation; failures must
@@ -55,11 +62,10 @@ are fed from the bot's order journal as well as `GET /orders`, so REJECTED and U
 submits appear with their codes and bot-side SGT timestamps. A market-wide `trade`
 event no longer triggers an orders re-read while the bot reports nothing resting.
 
-Deferred from this increment: ATR routing, stop-losses, portfolio caps (waiting on the
-strategy-centric allocator design) and the AI/MCP conversational panel. These are
-unfinished, not removed from the overall hackathon scope. DRFT remains off here;
-`origin/main` enables it with the other instruments. Emergency halt is immediate;
-parameter changes need two-step confirmation.
+Deferred from this increment: regime routing with confirmation/hysteresis above the
+implemented classifier, and a portfolio-level cap. These are unfinished, not removed
+from the overall hackathon scope. Emergency halt is immediate; parameter changes need
+two-step confirmation.
 
 Architecture: Python strategy instances consume public exchange SSE; authenticated REST
 reads gate limit-only, integer-cent, long-only orders. The dashboard is a separate

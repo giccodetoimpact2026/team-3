@@ -24,6 +24,9 @@ class BaseStrategy:
         self.lookback = int(config["lookback_samples"])
         self.trade_quantity = int(config["trade_quantity"])
         self.limit_offset_bps = int(config.get("limit_offset_bps", 5))
+        spread_cap = config.get("max_spread_bps")
+        self.max_spread_bps = None if spread_cap is None else float(spread_cap)
+        self.orderbook = None
         self.prices = deque(maxlen=self.lookback)
 
     def on_price(self, last_price: int):
@@ -32,12 +35,40 @@ class BaseStrategy:
     def ready(self) -> bool:
         return len(self.prices) >= self.lookback
 
+    def reset(self):
+        """Drop per-window state at a session boundary.
+
+        Prices belong to the window they were observed in, so carrying them
+        across a boundary trades the previous window's series. Subclasses that
+        hold extra state must extend this, not just clear `prices`.
+        """
+        self.prices.clear()
+
+    def spread_ok(self) -> bool:
+        """False when the book spread exceeds the configured max, signalling
+        that liquidity is too thin to trade safely."""
+        if self.max_spread_bps is None or self.orderbook is None:
+            return True
+        spread = self.orderbook.spread_bps(self.symbol)
+        if spread is None:
+            return True
+        return spread <= self.max_spread_bps
+
     def signal(self, position: int):
         """Return a Signal or None given the current held position (shares)."""
         raise NotImplementedError
 
     def _limit_price(self, reference: int, side: str) -> int:
-        """Cross the spread slightly to improve fill odds: pay up on a buy,
-        concede on a sell. `reference` and the result are integer cents."""
+        """Price off the order book when available, else fall back to a blind
+        offset from the last trade. `reference` and the result are integer cents."""
+        if self.orderbook is not None:
+            if side == "buy":
+                ask = self.orderbook.best_ask(self.symbol)
+                if ask is not None:
+                    return ask
+            else:
+                bid = self.orderbook.best_bid(self.symbol)
+                if bid is not None:
+                    return bid
         offset = reference * self.limit_offset_bps // 10_000
         return reference + offset if side == "buy" else reference - offset

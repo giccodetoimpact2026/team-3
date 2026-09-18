@@ -152,11 +152,7 @@ class SSEFeed:
         elif etype == "session":
             self._emit("session", payload)
         elif etype == "announcement":
-            # TODO(S1): students wire LLM-based signal here.
-            # `announcement` payload is { message, affected_symbol, timestamp, announcement_id } —
-            # the S1 signal source. Derive a directional view across the
-            # supply-chain web, gate it on confidence, and act via the strategies.
-            pass
+            self._emit("announcement", payload)
 
     def _emit(self, event_type: str, payload: dict):
         handler = self._handlers.get(event_type)

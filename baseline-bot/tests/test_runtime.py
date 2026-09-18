@@ -1,10 +1,42 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+import requests
+import yaml
 
 from exchange.client import ExchangeClient
 from exchange.feed import SSEFeed
-from main import load_config
+from main import Bot, load_config
+
+
+@pytest.fixture
+def config():
+    from pathlib import Path
+
+    return yaml.safe_load((Path(__file__).parents[1] / "config.yaml").read_text())
+
+
+@pytest.fixture
+def client():
+    c = Mock()
+    c.get_session.return_value = {"id": "window-1", "status": "running", "mode": "sandbox"}
+    c.get_orders.return_value = []
+    c.get_positions.return_value = 0
+    return c
+
+
+def ready_bot(client, config, **kwargs):
+    bot = Bot(client, config, **kwargs)
+    bot.session_id = "window-1"
+    s = bot.strategies["NOVA"]
+    # Fill exactly the configured lookback with a clear uptrend, so these tests
+    # keep exercising a live signal when the window is retuned. A fixed 10
+    # samples stopped filling the buffer when NOVA widened to 25, and every
+    # "assert not submitted" case below then passed vacuously.
+    for i in range(s.lookback):
+        s.on_price(10_000 + i * 100)
+    return bot, s
 
 
 def test_missing_position_is_zero():

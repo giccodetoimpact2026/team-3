@@ -3,42 +3,178 @@
 # Switch sandbox <-> live by pointing base_url at the right exchange and using
 # the matching api_key. Treat sandbox as dev and live as prod: develop and test
 # against sandbox, never against the live session.
+#
+# STRATEGY ASSIGNMENTS come from the pre-read, not from taste:
+#
+#   NOVA  Oil & Gas, trending, event-sensitive   -> momentum, WIDE lookback
+#         "it moves slow and far" (Derek Tan); James p.1 "trending names ...
+#         use a wider lookback than the fast names".
+#   AXON  Logistics, correlated with NOVA        -> leader-follower off NOVA
+#         "energy costs drive freight, so use NOVA as a leading signal: NOVA
+#         breaks a new high, go long AXON" (Derek); James p.4.
+#   CRVX  Semiconductors, growth                 -> momentum, narrower lookback
+#         "behaves like a growth/momentum name" (James p.4). Faster than NOVA,
+#         so a tighter window than NOVA's by the same page-1 rule.
+#   ELXR  Pharma, defensive, range-bound         -> mean-reversion, lookback 15
+#         "Lookback = 15 samples. This is important ... Use 15." (James p.2,
+#         and Adeline Loh's top bug).
+#   DRFT  Defense, event-driven, THIN book       -> mean-reversion, tiny size
+#         "moves on announcements, not on the others -- handle separately and
+#         size it small, your own orders move its price" (James p.4). Momentum
+#         is the wrong shape here: on a book this thin the bot's own buys lift
+#         the last price, which momentum then reads as its own signal.
 
 exchange:
   base_url: "https://api.codetoimpact.sg"   # sandbox/live URL from the platform team
-  api_key: REPLACE_WITH_TEAM_API_KEY
+  api_key: REPLACE_WITH_TEAM_API_KEY   # set EXCHANGE_API_KEY (or baseline-bot/.env); never commit the key
 
 instruments:
-  # Only NOVA and ELXR are traded by the baseline. AXON/CRVX/DRFT are left for
-  # you to add (the strategy router already keys off this config).
   active:
     primary: "NOVA"
     secondary: "ELXR"
+    extra:
+      - "CRVX"
+      - "DRFT"
+      - "AXON"
 
 strategy:
   NOVA:
     type: momentum
-    lookback_samples: 10
-    momentum_threshold: 0.003
-    trade_quantity: 100
+    # Momentum is (last - first) / first over the window, so a wider window
+    # measures a larger change for the same trend. Holding the required SLOPE
+    # constant when widening 10 -> 25: 0.008/10 = 0.0008 per sample, x25 = 0.02.
+    # Same selectivity per unit of trend, better noise rejection (noise grows
+    # with sqrt(N), trend with N).
+    lookback_samples: 25
+    momentum_threshold: 0.02
+    trade_quantity: 400
     limit_offset_bps: 5
   ELXR:
     type: mean_reversion
-    # lookback feels short — mean-reversion is throwing false signals. Check
-    # James Wee's strategy notes before trusting this number.
     lookback_samples: 15
     deviation_threshold: 0.004
-    trade_quantity: 50
+    trade_quantity: 800
+    limit_offset_bps: 5
+  CRVX:
+    type: momentum
+    # Growth name: moves faster than NOVA, so a narrower window. Slope-preserved
+    # from the previous 0.005/10: 0.0005 per sample x15 = 0.0075.
+    lookback_samples: 15
+    momentum_threshold: 0.0075
+    trade_quantity: 600
+    limit_offset_bps: 5
+  DRFT:
+    type: mean_reversion
+    # "It spikes on volume then drops" (Ethan, junior trader) — a spike-and-
+    # revert profile, so buy the trough and sell into the spike.
+    #
+    # ASYMMETRIC BANDS, and they have to be. A single 0.015 band placed NOTHING
+    # here, measured: the moves are upward, so price rarely sits 1.5% *below*
+    # its own mean, the buy leg never fired, and long-only means the sell leg
+    # cannot fire without a prior buy. 0 buys -> no position -> 0 sells.
+    #
+    # Buy the small frequent dips, sell into the large rare spikes. The sell
+    # band stays wider than the buy band so a position is only released on a
+    # real spike, not on noise.
+    lookback_samples: 15
+    deviation_threshold: 0.006      # fallback for either side if unset
+    buy_deviation_threshold: 0.006
+    sell_deviation_threshold: 0.012
+    trade_quantity: 10
+    limit_offset_bps: 5
+  AXON:
+    type: pairs_follow
+    leader: "NOVA"
+    # Long-only, so this is a correlated long, not a hedged pair: it stacks on
+    # NOVA's exposure instead of offsetting it.
+    lookback_samples: 5          # own buffer: only supplies the limit reference
+    leader_breakout_samples: 10  # must be <= NOVA's lookback_samples
+    breakout_arm_samples: 5      # follow for this many of our own ticks
+    exit_drawdown: 0.004         # leader gives back 0.4% from its high -> close
+    trade_quantity: 400
     limit_offset_bps: 5
 
+# Regime-aware sizing (James Wee, page 3 — "this is the one that matters").
+#
+# CLASSIFICATION is a separate component: point `classifier` at a dotted path to
+# something implementing strategies.regime_policy.RegimeClassifier (observe + classify,
+# returning one of TREND / RANGE / COMPRESSION / SHOCK / NEUTRAL / WARMUP).
+# Hysteresis — page 3's "so it doesn't flip-flop on the boundary" — belongs
+# there: debouncing a label is a property of the labeller, not of this table.
+# Per-instrument thresholds likewise.
+#
+# POLICY is here: a multiplier in [0, 1] applied to a new BUY. It can only
+# reduce risk. A sell is never touched, because a market-state label must not be
+# able to trap us in a position. Above 1.0 is rejected at startup.
+#
+# Enabling this without a classifier raises at startup rather than defaulting:
+# every symbol would read WARMUP, WARMUP forbids entries, and the bot would stop
+# trading without saying why.
+regime:
+  enabled: false
+  classifier: "strategies.regime_adapter.AtrRegimeClassifier"
+  # static_regime: "TREND"       # pin one regime for a demo or a bisect
+
+  # Omitted (family, regime) pairs fall back to strategies.regime_policy.DEFAULT_POLICY,
+  # which is these values. Restated here so the table is visible to the desk.
+  policy:
+    momentum:
+      TREND: 1.0                 # momentum active
+      RANGE: 0.0                 # p.3: "suspend momentum (it will bleed)"
+      COMPRESSION: 0.25          # no trend to ride — cut size toward zero
+      SHOCK: 0.0                 # whipsaw risk; no new entries
+      NEUTRAL: 0.5               # p.3: "hold current posture, reduce size"
+      WARMUP: 0.0                # never trade on an unclassified regime
+    mean_reversion:
+      TREND: 0.0                 # reverting into a trend is the falling knife
+      RANGE: 1.0                 # the range is where reversion belongs
+      COMPRESSION: 0.5           # little deviation worth capturing
+      SHOCK: 0.0                 # the move is information, not noise
+      NEUTRAL: 0.5
+      WARMUP: 0.0
+    pairs_follow:
+      # A follower reads its LEADER's regime: AXON's entry is triggered by NOVA
+      # breaking out, so whether that breakout means anything is a question
+      # about NOVA. The multipliers mirror momentum's — a breakout signal is a
+      # momentum signal wearing another instrument.
+      TREND: 1.0
+      RANGE: 0.0
+      COMPRESSION: 0.25
+      SHOCK: 0.0
+      NEUTRAL: 0.5
+      WARMUP: 0.0
+
+  # Per-instrument overrides of the family table, for the case page 3 flags:
+  # "the thin name will look more volatile per sample even when nothing is
+  # happening, so don't share thresholds across instruments."
+  per_symbol:
+    DRFT:
+      # Reduced, not zeroed. These were 0.0 when DRFT was effectively inert;
+      # now that it trades, zeroing COMPRESSION and NEUTRAL would suppress it
+      # in exactly the quiet conditions between spikes where it accumulates
+      # its position cheaply. The tiny clip, the 100-share cap and the 2% stop
+      # are what make that safe — not refusing to trade.
+      COMPRESSION: 0.25
+      NEUTRAL: 0.25
+      SHOCK: 0.0                 # a thin book in a shock is the one to avoid
+
 risk:
-  # Every team starts each window with 1,000 shares per instrument, so a cap
-  # below that refuses every buy. Caps are on the projected long (held +
-  # pending buys), not on what the bot adds.
-  max_position_primary: 1500
-  max_position_secondary: 1500
-  # Cap for the other discovered instruments (AXON/CRVX/DRFT), used by the
-  # DCA overlay. 0 would block all buys on them.
+  # --- position caps ------------------------------------------------------
+  # Not cash-binding: all caps filled at once is ~2100 shares, and at $60-$300
+  # that is well under the $10M a window opens with. They are concentration
+  # limits, so they are sized by conviction and by how much damage the name can
+  # do. Winston: prioritise NOVA and ELXR for stability; "AXON and CRVX are
+  # enhancements". Enhancements therefore do not get bigger books than the
+  # primary.
+  max_position_primary: 4000     # NOVA
+  max_position_secondary: 3000   # ELXR
+  max_position:
+    CRVX: 3500                   # enhancement, momentum
+    AXON: 4000                   # follower, matches leader's cap
+    DRFT: 400                    # thin book — kept small relative to others
+
+  # Cap for any discovered instrument not listed under max_position (the DCA
+  # overlay buys every instrument). 0 would block buys on unlisted names.
   max_position_default: 1500
   # At most this many live orders per symbol; a persistent signal cannot stack.
   max_active_orders_per_symbol: 1
@@ -47,7 +183,75 @@ risk:
   # GET /status. Resting orders are left alone.
   max_orders_per_minute: 20
   anomaly_pause_seconds: 60
-  # No portfolio-level cap and no stop-loss yet — pending the allocator design.
+
+  # --- correlated groups (BUG-008) ----------------------------------------
+  # Per-instrument caps can all be satisfied while the book is one directional
+  # bet. Clarissa Ng: "NOVA and AXON move together; if we're long both we've
+  # doubled a position." AXON's strategy makes that literal — it follows NOVA's
+  # breakout and the exchange is long-only, so it stacks on NOVA instead of
+  # hedging it.
+  #
+  # Capped in NOTIONAL CENTS, not shares: a share count cannot express joint
+  # exposure across instruments at different prices. Measured against each
+  # member's projected position (pending orders included) at its live mark.
+  #
+  # Sizing: NOVA 500 + AXON 500 shares, at the $60-$300 range instruments open
+  # in, is $60,000-$300,000 of one theme. 15,000,000 cents ($150,000) binds in
+  # the upper half of that range and leaves the lower half to the per-symbol
+  # caps. Re-check against actual opening prices on sandbox.
+  correlated_groups:
+    energy_freight:
+      symbols: ["NOVA", "AXON"]
+      max_notional_cents: 120000000
+
+  # --- exits --------------------------------------------------------------
+  # Fractions of the cost basis the exchange reports in
+  # GET /portfolio -> positions[].avg_cost. Every leg is a SELL that reduces or
+  # closes a held long; the exchange is long-only, so there is no protective
+  # stop on a short. Checked on every price event, and they OVERRIDE the
+  # strategy signal rather than competing with it.
+  #
+  # Which take-profit suits a name depends on its strategy:
+  #
+  #   momentum / follower -> TRAILING. A fixed target caps exactly the upside
+  #     momentum exists to capture. A trail lets the winner run and exits once
+  #     it gives back trail_pct from its high-water mark. It also closes a real
+  #     gap: momentum's own exit needs the whole window return to turn negative,
+  #     which on a 25-sample window means handing back most of the move first.
+  #
+  #   spike-and-revert (DRFT) -> FIXED. A trail sells into the drop on a thin
+  #     book; take the spike at a level instead.
+  #
+  #   mean-reversion (ELXR) -> NONE. Selling when price runs above the mean is
+  #     already that strategy's exit, so a fixed level would only fight it.
+  #
+  # A symbol omitted here has no exits at all, deliberately: nothing should
+  # guess at a risk tolerance nobody set. Tune on sandbox — these are starting
+  # points, not measured values.
+  exits:
+    NOVA:
+      stop_loss_pct: 0.03        # trending, moves slow and far — wide stop
+      trailing_take_profit:
+        arm_pct: 0.04            # only trail once up 4% from cost
+        trail_pct: 0.015         # then exit on a 1.5% give-back from the peak
+    CRVX:
+      stop_loss_pct: 0.04        # growth name, widest of the liquid names
+      trailing_take_profit:
+        arm_pct: 0.05
+        trail_pct: 0.02
+    AXON:
+      stop_loss_pct: 0.03        # follows NOVA, so tracks NOVA's levels
+      trailing_take_profit:
+        arm_pct: 0.04
+        trail_pct: 0.015
+    ELXR:
+      stop_loss_pct: 0.015       # defensive, range-bound — tight stop, no target
+    DRFT:
+      stop_loss_pct: 0.02        # thin book — exit before the spread eats it
+      take_profit_pct: 0.04      # spikes then drops: take the spike
+  # An exit concedes more of the spread than a strategy order — getting out
+  # beats the last basis point of price.
+  exit_limit_offset_bps: 25
 
 rate_limits:
   # Exchange tiers, per team, rolling window (exchange-api-reference §Rate limits).
@@ -64,6 +268,58 @@ heartbeat:
   interval_seconds: 5
   feed_degraded_after_seconds: 10
   feed_stall_after_seconds: 20
+
+orderbook:
+  stale_threshold_seconds: 5
+  max_spread_bps:
+    NOVA: 50
+    ELXR: 50
+    CRVX: 50
+    DRFT: 100
+    AXON: 50
+
+news:
+  enabled: true
+  cooldown_seconds: 60
+  directive_ttl_seconds: 120
+  default_size_multiplier: 0.5
+  size_multiplier:
+    NOVA: 0.6
+    ELXR: 0.5
+    CRVX: 0.8
+    DRFT: 0.25
+    AXON: 0.6
+
+  # --- LLM sentiment analysis (S1) ----------------------------------------
+  # Two tiers. The keyword classifier above is tier 0: coarse but instant, and
+  # it has to be, because the event worker is a single thread and an LLM round
+  # trip takes seconds. This is tier 1 — it runs on its own thread and replaces
+  # the provisional bias with per-symbol views that reason across the supply
+  # chain, which is what Sophia Tan actually asked for: "I don't want a keyword
+  # match on the named ticker ... sanctions on freight hit AXON directly but
+  # ripple to NOVA and CRVX for different reasons."
+  #
+  # Authentication is the SAME secret as the exchange — the LLM service has no
+  # separate key — so it comes from EXCHANGE_API_KEY and is never written here.
+  #
+  # Budget: the grant is ~$25 USD and a top-up is recorded and may carry a
+  # scoring penalty. One call per announcement_id, memoised, plus the hard
+  # ceiling below. At roughly $0.003 a call on sonnet, 60 calls is under $0.20.
+  llm:
+    enabled: true
+    base_url: "https://llm.codetoimpact.sg"
+    # The service's own reference names sonnet the default and asks for the
+    # smallest model that does the job. The task is a short supply-chain
+    # inference at single-digit calls per window, so cost is not binding and
+    # sonnet is the sensible middle. "haiku" is cheaper, "opus" reasons harder.
+    model: "sonnet"
+    max_tokens: 1024
+    timeout_seconds: 20
+    # Views below this confidence are discarded rather than traded. A
+    # second-order ripple should score lower than a direct hit, so this is the
+    # line between "act on it" and "note it".
+    min_confidence: 0.6
+    max_calls_per_session: 60
 
 control:
   # Local kill-switch endpoint consumed by the dashboard (via its /bot/* proxy).

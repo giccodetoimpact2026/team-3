@@ -110,6 +110,16 @@ class OrderManager:
         self._unknown: dict[str, UnknownIntent] = {}
         self._filled: dict[str, int] = {}
         self._reserved: dict[str, int] = {}
+        # Volume-weighted cost basis per symbol, integer cents, from
+        # GET /portfolio. Stop-loss and take-profit measure against this, so
+        # it is read from the exchange rather than tracked locally: the levels
+        # then survive a restart and reset at a session boundary by themselves.
+        self._avg_cost: dict[str, int] = {}
+        # Latest known price per symbol, integer cents. Fed both by the
+        # live SSE print (record_mark) and by the portfolio's own mark, so a
+        # symbol that has not ticked recently still has a usable value.
+        # Correlated-group exposure is measured in notional, which needs it.
+        self._mark: dict[str, int] = {}
         self._cash = 0
         self._reserved_cash = 0
         self._positions_at: float | None = None
@@ -163,6 +173,8 @@ class OrderManager:
             self._unknown.clear()
             self._filled.clear()
             self._reserved.clear()
+            self._avg_cost.clear()
+            self._mark.clear()
             self._cash = 0
             self._reserved_cash = 0
             self._positions_at = None
@@ -309,6 +321,42 @@ class OrderManager:
                     + self._pending(symbol, "buy") + unknown_buy
                     - self._pending(symbol, "sell") - unknown_sell)
 
+    def record_mark(self, symbol: str, price: int) -> None:
+        """Record the freshest observed price. Called on every price event."""
+        if price and price > 0:
+            with self._lock:
+                self._mark[symbol] = int(price)
+
+    def mark(self, symbol: str) -> int:
+        """Latest known price in cents, or 0 if the symbol has never traded."""
+        with self._lock:
+            return self._mark.get(symbol, 0)
+
+    def projected_notional(self, symbols) -> int:
+        """Projected exposure across `symbols`, in cents.
+
+        Each symbol's projected position (filled + pending buys - pending
+        sells, unknowns at full size) marked to its latest price. A symbol
+        with no known mark contributes 0 — it has never traded, so we hold
+        none of it and no order can have filled.
+        """
+        total = 0
+        for symbol in symbols:
+            projected = self.projected_position(symbol)
+            if projected <= 0:
+                continue
+            total += projected * self.mark(symbol)
+        return total
+
+    def avg_cost(self, symbol: str) -> int:
+        """Volume-weighted cost basis in cents; 0 when flat or unknown.
+
+        0 is the exchange's own "flat" marker, and the exit policy treats it
+        as "nothing to protect" rather than guessing at a basis.
+        """
+        with self._lock:
+            return self._avg_cost.get(symbol, 0)
+
     def available_to_sell(self, symbol: str) -> int:
         """Held shares not already locked by one of our resting sells.
 
@@ -361,6 +409,10 @@ class OrderManager:
         with self._lock:
             self._filled = {s: d["quantity"] for s, d in by_symbol.items()}
             self._reserved = {s: d["reserved_qty"] for s, d in by_symbol.items()}
+            self._avg_cost = {s: d["avg_cost"] for s, d in by_symbol.items()}
+            for s, d in by_symbol.items():
+                if d["last_price"] > 0:
+                    self._mark[s] = d["last_price"]
             self._cash = int((portfolio or {}).get("cash") or 0)
             self._reserved_cash = int((portfolio or {}).get("reserved_cash") or 0)
             self._positions_at = self._clock()
@@ -513,6 +565,8 @@ class OrderManager:
                 if not self._risk.allows_buy(symbol, self.projected_position(symbol),
                                              quantity):
                     return None
+                if not self._group_allows(symbol, quantity, price):
+                    return None
                 if not self._affordable(quantity, price):
                     log(f"{symbol}: intent refused, unreserved cash below "
                         f"{quantity * price} cents")
@@ -637,6 +691,28 @@ class OrderManager:
         delta = quantity if side == "buy" else -quantity
         self._filled[symbol] = self._filled.get(symbol, 0) + delta
         self._positions_at = None  # force a fresh portfolio read
+
+    def _group_allows(self, symbol: str, quantity: int, price: int) -> bool:
+        """Correlated-group cap (BUG-008). Caller holds the lock.
+
+        Per-instrument caps can all be satisfied while the book is one
+        directional bet: NOVA and AXON move together, and AXON's follower
+        strategy is long-only, so it stacks on NOVA rather than hedging it.
+        The new slice is valued at its own limit price — that is what we
+        would actually pay — and the existing position at its live mark.
+        """
+        group = self._risk.group_for(symbol)
+        if group is None:
+            return True
+        members = self._risk.group_symbols(group)
+        current = self.projected_notional(members)
+        added = quantity * price
+        if self._risk.allows_group_buy(group, current, added):
+            return True
+        log(f"{symbol}: intent refused, correlated group {group!r} "
+            f"({'+'.join(members)}) would reach {current + added} cents "
+            f"against a cap of {self._risk.max_group_notional(group)}")
+        return False
 
     def _affordable(self, quantity: int, price: int) -> bool:
         """Cheap pre-check against a 402 that would still spend an order slot.

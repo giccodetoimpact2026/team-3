@@ -10,6 +10,15 @@ Run instructions and checks are in baseline-bot/README.md. Never commit the team
 No application LLM feature has been implemented and no organizer LLM credits were used.
 Future scored AI features must use the organizer-provided LLM service.
 
+## Strategy classifier increment
+
+Codex implemented and tested `baseline-bot/strategies/regime.py` from the team's
+strategy-optimisation playbook. The module uses ATR-like price volatility,
+directional efficiency and a pre-shock volatility baseline; it returns explanatory
+metrics and a typed transition instead of placing orders. The implementation does
+not yet route strategies or claim predictive profitability. Human review remains
+required before its output changes live position sizing or order decisions.
+
 ## Dashboard increment (P4/P5)
 
 Implemented with Claude Code from `team-execution-plan.md`, the exchange API reference,
