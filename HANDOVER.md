@@ -1,7 +1,7 @@
 # Bot Handover
 
 Original author: Alex Chen (Lead Developer, Bot)
-Updated: 18 September 2026 (SGT) — P1 and P3 bug-fix branches merged.
+Updated: 18 September 2026 (SGT) — P1 and P3 bug-fix branches merged; dashboard P4/P5 branch added (see the dashboard section at the end).
 
 ---
 
@@ -123,3 +123,22 @@ After merging P1, P2 and P3:
 ## Local configuration note
 
 The working tree contains an unstaged sandbox endpoint/key change in `config.yaml`. The credential was deliberately excluded from P1 commit `252bc96`. Preserve or migrate it to environment-based configuration without committing the secret.
+
+---
+
+## Dashboard (P4/P5 — `p4-p5-dashboard` branch)
+
+Details in `bugfixes/dashboard-handoff.md` and `baseline-dashboard/README.md`.
+
+Done: SSE feed replaces the 30 s timer (must-fix #1); stale values cleared on feed
+error (must-fix #4); SGT everywhere (must-fix #7); dynamic instruments with zero/dash
+rendering for untraded symbols (must-fix #6); session order counters; per-instrument
+P&L from MCP `get_pnl` with `/portfolio` fallback; order lifecycle table; Gerald-schema
+CSV export; HTML escaping of exchange strings; 42 Node unit tests; repo-root
+`dashboard-ci.yml`.
+
+Run: `cd baseline-dashboard && npm start` (reads the key from `EXCHANGE_API_KEY` or
+`../baseline-bot/.env`), and the MCP server on port 8091 (see the dashboard README).
+
+Open: heartbeat health dot (needs a bot heartbeat), kill switch (needs a bot control
+channel; `halt()` exists), MCP conversational panel, price chart, dark mode.
