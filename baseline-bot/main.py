@@ -4,6 +4,7 @@ Discovers instruments, wires momentum (primary) and mean-reversion (secondary)
 to the SSE price feed, gates on session state, and submits limit orders through
 the REST client. Single process, stdout logging.
 """
+import importlib
 import os
 import signal
 import sys
@@ -24,6 +25,7 @@ from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
 from news.engine import NewsEngine
 from strategies.pairs import PairsFollowStrategy
+from strategies.regime import RegimePolicy, StaticRegimeClassifier
 from utils.control import ControlServer
 from utils.event_worker import EventWorker
 from utils.logger import log
@@ -97,8 +99,51 @@ def build_strategies(config):
     return strategies
 
 
+def build_regime_classifier(regime_cfg):
+    """Resolve the regime classifier named in config.
+
+    The classifier is somebody else's component; this only has to find it. Point
+    `regime.classifier` at a dotted path to a zero-argument callable or class
+    implementing strategies.regime.RegimeClassifier (observe + classify).
+
+    With the policy enabled and no classifier configured, this raises rather
+    than defaulting: an absent classifier would mean every symbol reads WARMUP,
+    and WARMUP forbids entries, so the bot would stop trading without saying so.
+    """
+    path = regime_cfg.get("classifier")
+    if not path:
+        static = regime_cfg.get("static_regime")
+        if static:
+            # Escape hatch for a demo or a bisect: pin every symbol to one
+            # regime without standing up the real classifier.
+            log(f"regime: using StaticRegimeClassifier({static})")
+            return StaticRegimeClassifier(static)
+        raise ValueError(
+            "regime.enabled is true but regime.classifier is not set; set it to "
+            "the dotted path of a RegimeClassifier implementation, or set "
+            "regime.static_regime to pin one regime, or disable regime")
+
+    module_name, _, attr = path.rpartition(".")
+    if not module_name:
+        raise ValueError(f"regime.classifier {path!r} must be a dotted path")
+    module = importlib.import_module(module_name)
+    try:
+        factory = getattr(module, attr)
+    except AttributeError as exc:
+        raise ValueError(f"regime.classifier {path!r} not found") from exc
+
+    instance = factory()
+    for method in ("observe", "classify"):
+        if not callable(getattr(instance, method, None)):
+            raise ValueError(
+                f"regime.classifier {path!r} has no {method}(); it must "
+                f"implement strategies.regime.RegimeClassifier")
+    log(f"regime: classifier {path}")
+    return instance
+
+
 def make_price_handler(strategies, orders, state, lifecycle, exits=None,
-                       news_engine=None):
+                       news_engine=None, regime_policy=None, classifier=None):
     """Build the handler for `price` events.
 
     Module level rather than a closure inside main() so the trading path can be
@@ -122,6 +167,10 @@ def make_price_handler(strategies, orders, state, lifecycle, exits=None,
         # exposure is measured in notional, and a symbol that has not ticked
         # this window would otherwise be valued at 0.
         orders.record_mark(symbol, payload["last_price"])
+        # The classifier keeps its own buffers, so it observes every print —
+        # including between windows, so it is not cold at the open.
+        if classifier is not None:
+            classifier.observe(symbol, int(payload["last_price"]))
         if not state["session_open"]:
             return
 
@@ -181,6 +230,23 @@ def make_price_handler(strategies, orders, state, lifecycle, exits=None,
 
         if signal is None:
             return
+
+        # Regime runs LAST, as the final gate on how much risk we add. News can
+        # enlarge or generate a signal; regime can only trim or veto it, and it
+        # never touches a sell — a market-state label must not be able to trap
+        # us in a position. James p.3 is the source for the table itself.
+        if regime_policy is not None and classifier is not None:
+            before = signal.quantity
+            signal = regime_policy.apply(symbol, strat, signal, classifier)
+            if signal is None:
+                log(f"regime: no entry for {symbol} in "
+                    f"{regime_policy.regime_for(strat, classifier)}")
+                return
+            if signal.quantity != before:
+                log(f"regime: {symbol} buy trimmed {before} -> "
+                    f"{signal.quantity} in "
+                    f"{regime_policy.regime_for(strat, classifier)}")
+
         orders.submit_intent(symbol, signal.side, signal.quantity, signal.limit_price)
 
     return on_price
@@ -363,6 +429,16 @@ def main():
     if news_engine:
         log("news engine enabled")
 
+    # --- regime policy (James Wee, page 3) -----------------------------------
+    # The classifier is a separate component. Until it is wired, the policy is
+    # off: a policy with no classifier would treat every symbol as WARMUP and
+    # silently stop trading, so this fails loudly instead.
+    regime_policy = RegimePolicy(config.get("regime", {}))
+    classifier = None
+    if regime_policy.enabled:
+        classifier = build_regime_classifier(config.get("regime", {}))
+        log(f"regime policy enabled: {regime_policy.table()}")
+
     # Report starting positions and the risk parameters in force.
     for sym, strat in strategies.items():
         log(f"{sym} [{type(strat).__name__}] starting position: "
@@ -414,7 +490,9 @@ def main():
             state["session_id"] = new_id
 
     on_price = make_price_handler(strategies, orders, state, lifecycle, exits,
-                                  news_engine=news_engine)
+                                  news_engine=news_engine,
+                                  regime_policy=regime_policy,
+                                  classifier=classifier)
 
     def on_announcement(payload):
         log(

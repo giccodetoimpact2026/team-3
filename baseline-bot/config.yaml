@@ -85,6 +85,64 @@ strategy:
     trade_quantity: 50
     limit_offset_bps: 5
 
+# Regime-aware sizing (James Wee, page 3 — "this is the one that matters").
+#
+# CLASSIFICATION is a separate component: point `classifier` at a dotted path to
+# something implementing strategies.regime.RegimeClassifier (observe + classify,
+# returning one of TREND / RANGE / COMPRESSION / SHOCK / NEUTRAL / WARMUP).
+# Hysteresis — page 3's "so it doesn't flip-flop on the boundary" — belongs
+# there: debouncing a label is a property of the labeller, not of this table.
+# Per-instrument thresholds likewise.
+#
+# POLICY is here: a multiplier in [0, 1] applied to a new BUY. It can only
+# reduce risk. A sell is never touched, because a market-state label must not be
+# able to trap us in a position. Above 1.0 is rejected at startup.
+#
+# Enabling this without a classifier raises at startup rather than defaulting:
+# every symbol would read WARMUP, WARMUP forbids entries, and the bot would stop
+# trading without saying why.
+regime:
+  enabled: false
+  # classifier: "regime_classifier.AtrRegimeClassifier"
+  # static_regime: "TREND"       # pin one regime for a demo or a bisect
+
+  # Omitted (family, regime) pairs fall back to strategies.regime.DEFAULT_POLICY,
+  # which is these values. Restated here so the table is visible to the desk.
+  policy:
+    momentum:
+      TREND: 1.0                 # momentum active
+      RANGE: 0.0                 # p.3: "suspend momentum (it will bleed)"
+      COMPRESSION: 0.25          # no trend to ride — cut size toward zero
+      SHOCK: 0.0                 # whipsaw risk; no new entries
+      NEUTRAL: 0.5               # p.3: "hold current posture, reduce size"
+      WARMUP: 0.0                # never trade on an unclassified regime
+    mean_reversion:
+      TREND: 0.0                 # reverting into a trend is the falling knife
+      RANGE: 1.0                 # the range is where reversion belongs
+      COMPRESSION: 0.5           # little deviation worth capturing
+      SHOCK: 0.0                 # the move is information, not noise
+      NEUTRAL: 0.5
+      WARMUP: 0.0
+    pairs_follow:
+      # A follower reads its LEADER's regime: AXON's entry is triggered by NOVA
+      # breaking out, so whether that breakout means anything is a question
+      # about NOVA. The multipliers mirror momentum's — a breakout signal is a
+      # momentum signal wearing another instrument.
+      TREND: 1.0
+      RANGE: 0.0
+      COMPRESSION: 0.25
+      SHOCK: 0.0
+      NEUTRAL: 0.5
+      WARMUP: 0.0
+
+  # Per-instrument overrides of the family table, for the case page 3 flags:
+  # "the thin name will look more volatile per sample even when nothing is
+  # happening, so don't share thresholds across instruments."
+  per_symbol:
+    DRFT:
+      COMPRESSION: 0.0           # thin book: no edge in a quiet market
+      NEUTRAL: 0.0               # only trade this name on a real signal
+
 risk:
   # --- position caps ------------------------------------------------------
   # Not cash-binding: all caps filled at once is ~2100 shares, and at $60-$300
