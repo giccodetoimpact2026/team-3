@@ -128,7 +128,7 @@
           <span class="section-meta" id="chart-meta">—</span>
         </div>
         <div id="chart-box" class="chart-box"></div>
-        <div class="source">Built from SSE <code>price</code> events (no candles endpoint). Dots are our fills. The shaded cone is the dashboard's 5-minute forecast: a model estimate with a 90% band, not a fact.</div>
+        <div class="source">Built from SSE <code>price</code> events (no candles endpoint). Dots are our fills. The shaded cone is the dashboard's 1-minute forecast: a model estimate with a 90% band, not a fact.</div>
       </section>
 
       <!-- Trader / Risk / Ops: what is resting on the book right now -->
@@ -253,7 +253,7 @@
       <!-- Analyst: forecast with confidence (Sophia) -->
       <section class="forecast" id="forecast" data-section="forecast">
         <div class="section-head">
-          <h2>5-minute forecast</h2>
+          <h2>1-minute forecast</h2>
           <span class="section-meta">Model estimate, never a fact. Method: drift and volatility of log returns over the live price buffer; 90% band; confidence by rule from sample count and band width.</span>
         </div>
         <div class="forecast-grid" id="forecast-grid"></div>

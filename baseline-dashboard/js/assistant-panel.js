@@ -15,7 +15,7 @@ const AssistantPanel = {
     "Are we making or losing money, and where?",
     "Which instrument is our biggest risk right now?",
     "What did the bot do on CRVX recently and why did orders fail?",
-    "What is the 5-minute outlook for NOVA?",
+    "What is the 1-minute outlook for NOVA?",
   ],
 
   llmState: null, // {state, detail, at} for the health strip
