@@ -40,6 +40,11 @@ instruments:
 strategy:
   NOVA:
     type: momentum
+    # No `dca` block, deliberately. A DCA ladder adds on ADVERSE moves, which
+    # inverts a momentum thesis — it would buy a falling price while the
+    # strategy's premise is that price rises. Momentum already scales in on
+    # FAVOURABLE moves, re-buying while the trend persists, which is the
+    # momentum-appropriate form of the same idea.
     # Momentum is (last - first) / first over the window, so a wider window
     # measures a larger change for the same trend. Holding the required SLOPE
     # constant when widening 10 -> 25: 0.008/10 = 0.0008 per sample, x25 = 0.02.
@@ -55,6 +60,19 @@ strategy:
     deviation_threshold: 0.004
     trade_quantity: 800
     limit_offset_bps: 5
+    # DCA / scale-in. Mean-reversion is the one family where this belongs: the
+    # deviation band IS the thesis, so a deeper dip is a STRONGER signal, not a
+    # broken one. Each tranche demands a deeper dip than the last — with
+    # step_multiple 1.0 that is 1x, 2x, 3x the band (0.4% / 0.8% / 1.2%) — so a
+    # single shallow dip only ever buys once.
+    #
+    # Bounded by max_tranches AND by the position cap, so worst-case loss is
+    # unchanged: cap x stop_loss_pct either way. What DCA changes is the average
+    # entry price and how often we reach the cap, not how much we can lose.
+    dca:
+      max_tranches: 3
+      step_multiple: 1.0
+
   CRVX:
     type: momentum
     # Growth name: moves faster than NOVA, so a narrower window. Slope-preserved
@@ -105,6 +123,12 @@ strategy:
   #
   # Check max_position for the symbol covers the full ladder, and the
   # correlated_groups notional if the symbol is in one.
+    # Scale-in matters more here than anywhere: "your order size moves the
+    # price" (James p.4), so three 10-share clips at deepening dips disturb a
+    # thin book far less than one block. Ladder: 0.6% / 1.2% / 1.8%.
+    dca:
+      max_tranches: 3
+      step_multiple: 1.0
 
   AXON:
     type: pairs_follow

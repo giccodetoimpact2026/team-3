@@ -41,6 +41,40 @@ class MeanReversionStrategy(BaseStrategy):
             raise ValueError(
                 f"{symbol}: deviation thresholds must be positive fractions")
 
+        dca = config.get("dca") or {}
+        # 1 tranche is "no ladder" — exactly the previous behaviour, so an
+        # instrument without a `dca` block is unaffected.
+        self.max_tranches = int(dca.get("max_tranches", 1))
+        self.dca_step = float(dca.get("step_multiple", 1.0))
+        if self.max_tranches < 1:
+            raise ValueError(f"{symbol}: dca.max_tranches must be >= 1")
+        if self.dca_step < 0:
+            raise ValueError(f"{symbol}: dca.step_multiple cannot be negative")
+
+    # --- scale-in ladder --------------------------------------------------
+
+    def tranches_held(self, position: int) -> int:
+        """How many clips of the ladder are already on.
+
+        Derived from the position rather than counted in state, so it survives a
+        restart, needs no reset at a session boundary, and cannot drift from
+        what the exchange thinks we hold.
+        """
+        if self.trade_quantity <= 0:
+            return 0
+        return max(0, position) // self.trade_quantity
+
+    def required_deviation(self, position: int) -> float:
+        """The deviation the NEXT tranche demands.
+
+        Each successive tranche needs a deeper dip: tranche n requires
+        `buy_threshold * (1 + n * step_multiple)`. With the defaults that is
+        1x, 2x, 3x the band. So a single shallow dip only ever buys once, and
+        the ladder only extends if the price genuinely keeps moving away.
+        """
+        return self.buy_threshold * (
+            1 + self.tranches_held(position) * self.dca_step)
+
     def signal(self, position: int):
         if not self.ready():
             return None
@@ -50,11 +84,15 @@ class MeanReversionStrategy(BaseStrategy):
             return None
         deviation = (last - mean) / mean
 
-        if deviation <= -self.buy_threshold:
-            # Below the mean: expect reversion up -> buy. The spread and
-            # liquidity gates apply to ENTRIES only — a thin book must never
-            # stop us reducing, or the illiquidity that triggered them traps
-            # the position.
+        if deviation <= -self.required_deviation(position):
+            # Below the mean: expect reversion up -> buy. Successive tranches
+            # demand successively deeper dips, and the ladder stops at
+            # max_tranches.
+            if self.tranches_held(position) >= self.max_tranches:
+                return None
+            # The spread and liquidity gates apply to ENTRIES only — a thin
+            # book must never stop us reducing, or the illiquidity that
+            # triggered them traps the position.
             if not self.spread_ok():
                 return None
             limit = self._limit_price(last, "buy")
