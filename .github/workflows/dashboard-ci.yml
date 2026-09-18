@@ -1,7 +1,5 @@
-# Repo-root CI. GitHub only runs workflows under the repo-root .github/, so the
-# per-project starter workflows (baseline-*/.github/workflows/ci.yml) are
-# mirrored here as jobs. Paths filters keep each job to its own project.
-name: ci
+# Repo-root CI for the dashboard (GitHub only runs workflows under the repo-root .github/).
+name: Dashboard checks
 
 on:
   push:
