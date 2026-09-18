@@ -14,12 +14,14 @@
         <span class="title">Trading Dashboard</span>
       </div>
       <div class="status">
+        <span id="session-badge" class="badge" title="Trading session state (SSE)">—</span>
         <span id="connectivity-dot" class="dot offline"></span>
         <span id="connectivity-label">CONNECTING…</span>
       </div>
     </header>
 
     <main class="content">
+      <div id="announcement" class="announcement" style="display: none"></div>
       <section class="cards">
         <div class="card" id="card-total-value">
           <div class="label">Total Value</div>
@@ -33,6 +35,13 @@
           <div class="label">Unrealized P&amp;L</div>
           <div class="value">—</div>
         </div>
+      </section>
+
+      <section class="ops-strip" id="ops-strip" aria-label="Session order totals">
+        <div class="stat"><span class="label">Buy orders</span><span class="num" id="count-buy">—</span></div>
+        <div class="stat"><span class="label">Sell orders</span><span class="num" id="count-sell">—</span></div>
+        <div class="stat"><span class="label">Partially filled</span><span class="num" id="count-partial">—</span></div>
+        <div class="stat"><span class="label">Rejected</span><span class="num" id="count-rejected">—</span></div>
       </section>
 
       <section class="positions">
@@ -49,6 +58,49 @@
           </thead>
           <tbody id="positions-body"></tbody>
         </table>
+      </section>
+
+      <section class="pnl">
+        <div class="section-head">
+          <h2>P&amp;L by Instrument</h2>
+          <span class="section-meta">Total <strong id="pnl-total">—</strong></span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th class="num">Realized</th>
+              <th class="num">Unrealized</th>
+              <th class="num">Total</th>
+            </tr>
+          </thead>
+          <tbody id="pnl-body"></tbody>
+        </table>
+        <div class="source" id="pnl-source">—</div>
+      </section>
+
+      <section class="lifecycle">
+        <div class="section-head">
+          <h2>Order Lifecycle</h2>
+          <span class="section-meta" id="lifecycle-count">—</span>
+          <button id="export-csv" class="btn" type="button" disabled>Export CSV</button>
+        </div>
+        <table class="dense">
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Time (SGT)</th>
+              <th>Instrument</th>
+              <th>Side</th>
+              <th class="num">Qty</th>
+              <th class="num">Limit</th>
+              <th class="num">Remaining</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="lifecycle-body"></tbody>
+        </table>
+        <div class="source" id="export-status"></div>
       </section>
 
       <!--
@@ -84,6 +136,9 @@
 
     <script src="js/config.js"></script>
     <script src="js/format.js"></script>
+    <script src="js/view.js"></script>
+    <script src="js/trades.js"></script>
+    <script src="js/mcp.js"></script>
     <script src="js/api.js"></script>
     <script src="js/dashboard.js"></script>
   </body>

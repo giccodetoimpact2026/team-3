@@ -14,11 +14,37 @@ and trading smoke test remain pending a locally configured team key. No profitab
 claim is made. SIGKILL or network loss can prevent shutdown cancellation; failures must
 be visible. Shutdown cancels all resting team orders; use one order-writing bot.
 
-Deferred from this increment: dashboard mandatory fixes, kill-switch UI, heartbeat,
-ATR routing, additional instruments, stop-losses, portfolio caps and AI/MCP panel.
+Dashboard increment (P4/P5): the dashboard subscribes to the exchange SSE feed and
+re-reads `GET /portfolio` and `GET /orders` only when the market moves, coalesced to
+respect the shared 300-per-30s read tier (must-fix #1). On a feed drop every figure is
+replaced with "Reconnecting…" and the session badge is cleared until fresh data
+arrives (must-fix #4). All displayed and exported times are `YYYY-MM-DD HH:MM:SS.mmm
+SGT` (must-fix #7). Instruments come from `GET /instruments`; an untraded symbol renders
+quantity `0` and dashes, never `undefined` (must-fix #6, dashboard side of BUG-019).
+Session counters (buy, sell, partially filled, rejected) are always visible. Per-
+instrument P&L is read from the MCP `get_pnl` tool with its `source` and `as_of`
+labels; when the MCP server is unreachable the same table is filled from
+`GET /portfolio` and the label says so. An order lifecycle table records every status
+transition the dashboard observed, using Gerald's codes (`OPEN` shown as
+`ACKNOWLEDGED`), and the CSV export uses his fixed column order with period decimals.
+Values from the exchange are HTML-escaped before rendering. Pure logic (formatting,
+view rows, SSE cursor, lifecycle, cost basis, CSV) is unit-tested in Node and run by
+repo-root CI.
+
+Dashboard acceptance: `npm run check` and `npm test` pass (42 tests); the page was
+exercised against the sandbox exchange with a running MCP server, including a forced
+feed error and a forced MCP outage. The lifecycle table only contains transitions the
+dashboard saw while open; a fill that happened while the page was closed appears as a
+single `FILLED` row. Per-fill realized P&L in the export is reconstructed from the
+session's fills and the current volume-weighted cost basis.
+
+Deferred from this increment: kill-switch UI, heartbeat health dot, ATR routing,
+additional instruments, stop-losses, portfolio caps and the AI/MCP conversational panel.
 These are unfinished, not removed from the overall hackathon scope. DRFT remains off.
 Emergency halt should be immediate; parameter changes need two-step confirmation.
 
 Architecture: Python strategy instances consume public exchange SSE; authenticated REST
-reads gate limit-only, integer-cent, long-only orders. The existing dashboard and MCP
-server remain separate processes and are unchanged in this increment.
+reads gate limit-only, integer-cent, long-only orders. The dashboard is a separate
+process served by `baseline-dashboard/server.js`, which proxies `/exchange/*` to the
+exchange and injects `X-API-Key` so the key never reaches the browser. The MCP read
+server is a third process; the dashboard calls its REST facade directly.
