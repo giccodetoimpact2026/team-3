@@ -67,7 +67,7 @@ def load_config():
         "EXCHANGE_BASE_URL", exchange.get("base_url", "")
     ).rstrip("/")
     exchange["api_key"] = os.environ.get(
-        "EXCHANGE_API_KEY", exchange.get("api_key", "")
+        "EXCHANGE_API_KEY", ""
     )
     if not exchange["base_url"]:
         raise ValueError("exchange base URL is required")
