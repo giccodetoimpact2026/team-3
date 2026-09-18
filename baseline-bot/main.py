@@ -220,7 +220,7 @@ def build_regime_classifier(regime_cfg):
 
 def make_price_handler(strategies, orders, state, lifecycle, exits=None,
                        news_engine=None, regime_policy=None, classifier=None,
-                       crash=None, dca=None):
+                       crash=None, dca=None, tags=None):
     """Build the handler for `price` events.
 
     Module level rather than a closure inside main() so the trading path can be
@@ -280,10 +280,13 @@ def make_price_handler(strategies, orders, state, lifecycle, exits=None,
             if forced is not None:
                 log(f"exit: {forced}")
                 orders.submit_intent(symbol, "sell", forced.quantity,
-                                     forced.limit_price)
+                                     forced.limit_price, source="exit")
                 return
 
         signal = strat.signal(sellable)
+        # Who is responsible for the order that may follow: the symbol\'s
+        # configured strategy type, or "news" when the bias creates the order.
+        source = (tags or {}).get(symbol) or type(strat).__name__
         last_price = strat.prices[-1] if strat.prices else None
 
         bias = news_engine.active_bias(symbol) if news_engine else None
@@ -304,11 +307,13 @@ def make_price_handler(strategies, orders, state, lifecycle, exits=None,
                 if bias.action == "buy":
                     offset = last_price * strat.limit_offset_bps // 10_000
                     signal = Signal("buy", news_qty, last_price + offset)
+                    source = "news"
                     log(f"news: generating buy for {symbol} (bullish bias, no strategy signal)")
                 elif bias.action == "sell" and sellable > 0:
                     sell_qty = min(news_qty, sellable)
                     offset = last_price * strat.limit_offset_bps // 10_000
                     signal = Signal("sell", sell_qty, last_price - offset)
+                    source = "news"
                     log(f"news: generating sell for {symbol} (bearish bias, no strategy signal)")
 
         if signal is None:
@@ -330,7 +335,8 @@ def make_price_handler(strategies, orders, state, lifecycle, exits=None,
                     f"{signal.quantity} in "
                     f"{regime_policy.regime_for(strat, classifier)}")
 
-        orders.submit_intent(symbol, signal.side, signal.quantity, signal.limit_price)
+        orders.submit_intent(symbol, signal.side, signal.quantity, signal.limit_price,
+                             source=source)
 
     return on_price
 
@@ -666,7 +672,8 @@ def main():
                                   news_engine=news_engine,
                                   regime_policy=regime_policy,
                                   classifier=classifier,
-                                  crash=crash, dca=dca)
+                                  crash=crash, dca=dca,
+                                  tags={sym: cfg.get("type") for sym, cfg in config["strategy"].items()})
 
     def on_announcement(payload):
         log(

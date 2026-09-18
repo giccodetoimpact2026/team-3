@@ -104,6 +104,13 @@ class OrderManager:
         # SSE `trade` event carries no order id, and GET /orders never shows
         # a REJECTED submit or an UNKNOWN one under reconciliation.
         self._journal = deque(maxlen=self.JOURNAL_SIZE)
+        # Which strategy placed each order (momentum, mean_reversion, dca,
+        # exit, crash_guard, news), by idempotency key at submit time and by
+        # exchange order id once acknowledged. Every journal entry carries it
+        # so the dashboard can show who bought or sold, and why-questions can
+        # be answered from the record rather than guessed.
+        self._strategy_by_key = {}
+        self._strategy_by_order = {}
         self._journal_seq = 0
 
         self._active: dict[str, ActiveOrder] = {}
@@ -242,8 +249,11 @@ class OrderManager:
 
     def _journal_put(self, kind, status, symbol, side, quantity, price,
                      order_id=None, key=None, remaining=None, filled=None,
-                     code=None) -> None:
+                     code=None, strategy=None) -> None:
         with self._lock:
+            if strategy is None:
+                strategy = (self._strategy_by_order.get(order_id) if order_id else None) \
+                    or (self._strategy_by_key.get(key) if key else None)
             self._journal_seq += 1
             self._journal.append({
                 "seq": self._journal_seq,
@@ -260,6 +270,7 @@ class OrderManager:
                 "remaining": remaining,
                 "filled": filled,
                 "code": code,
+                "strategy": strategy,
                 "session_id": self._session_id,
             })
 
@@ -531,7 +542,7 @@ class OrderManager:
     # --- writes ----------------------------------------------------------
 
     def submit_intent(self, symbol: str, side: str, quantity: int,
-                      price: int) -> SubmitResult | None:
+                      price: int, source=None) -> SubmitResult | None:
         """Gate an intent and submit it. None means refused locally, nothing sent.
 
         Gates run cheapest-and-most-blocking first so a refused intent never
@@ -593,6 +604,9 @@ class OrderManager:
             self._unknown[key] = UnknownIntent(key, symbol, side, quantity, price,
                                                self._clock())
 
+        if source:
+            with self._lock:
+                self._strategy_by_key[key] = source
         return self._send(symbol, side, quantity, price, key)
 
     def flatten(self, symbol: str, pricer) -> SubmitResult | None:
@@ -645,6 +659,8 @@ class OrderManager:
             self._unknown[key] = UnknownIntent(key, symbol, "sell", quantity, price,
                                                self._clock())
         log(f"{symbol}: flatten sell {quantity}@{price}")
+        with self._lock:
+            self._strategy_by_key[key] = "crash_guard"  # flatten() is the crash guard's exit
         return self._send(symbol, "sell", quantity, price, key)
 
     def _send(self, symbol, side, quantity, price, key) -> SubmitResult:
@@ -674,6 +690,9 @@ class OrderManager:
         return result
 
     def _record_ack(self, result, symbol, side, quantity, price, key) -> None:
+        if result.order_id and key in self._strategy_by_key:
+            with self._lock:
+                self._strategy_by_order[result.order_id] = self._strategy_by_key[key]
         if result.filled_qty:
             self._apply_fill(symbol, side, result.filled_qty)
         if result.status in LIVE_STATUSES and result.order_id:

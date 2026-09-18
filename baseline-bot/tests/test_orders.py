@@ -514,3 +514,30 @@ def test_keys_differ_across_bot_restarts_in_the_same_session(client, clock):
     first = OrderManager(client, risk, session_id="w1", clock=clock)
     second = OrderManager(client, risk, session_id="w1", clock=clock)
     assert first._next_key("NOVA", "buy") != second._next_key("NOVA", "buy")
+
+
+def test_journal_tags_every_entry_with_the_submitting_strategy(manager, client, clock):
+    """The dashboard's Strategy column and its "why did the bot do that" answers
+    need to know which strategy placed each order, on the submit entry and on
+    every later fill, sync or cancel entry for the same order."""
+    manager.submit_intent("NOVA", "buy", 100, 4250, source="momentum")
+    client.submit_limit_order.return_value = SubmitResult(
+        Outcome.REJECTED, "k2", code="PRICE_OUT_OF_BAND")
+    manager.submit_intent("ELXR", "buy", 50, 9000, source="dca")
+    client.submit_limit_order.return_value = SubmitResult(
+        Outcome.ACKNOWLEDGED, "k3", order_id="o3", status="OPEN", remaining_qty=10)
+    manager.submit_intent("ELXR", "buy", 10, 9000)  # no source given
+    client.get_orders.return_value = [
+        {"id": "o1", "status": "FILLED", "remaining_qty": 0, "idempotency_key": "k"},
+        {"id": "o3", "status": "OPEN", "remaining_qty": 10, "idempotency_key": "k3"}]
+    clock.advance(2)
+    manager.poll()
+
+    events = manager.events_since(0)
+    tagged = [(e["kind"], e["status"], e["symbol"], e["strategy"]) for e in events]
+    assert tagged == [
+        ("submit", "OPEN", "NOVA", "momentum"),
+        ("submit", "REJECTED", "ELXR", "dca"),
+        ("submit", "OPEN", "ELXR", None),
+        ("sync", "FILLED", "NOVA", "momentum"),
+    ]
