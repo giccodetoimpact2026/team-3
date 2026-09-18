@@ -201,11 +201,6 @@ class ExchangeClient:
         return SubmitResult(Outcome.REJECTED, idempotency_key, code=code or "REJECTED",
                             rate_remaining=remaining)
 
-    def get_session(self):
-        r = self.session.get(f"{self.base_url}/session", timeout=5)
-        r.raise_for_status()
-        return _data(r.json())
-
     def cancel_order(self, order_id: str) -> CancelResult:
         """Cancel one resting order. Never raises.
 
