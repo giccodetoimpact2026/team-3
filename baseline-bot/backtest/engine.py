@@ -19,10 +19,16 @@ from main import build_strategy
 from .fill import try_fill
 
 
-def make_strategy(symbol: str, base_cfg: dict, overrides: dict):
-    """Build the real strategy with `overrides` merged over the config block."""
+def make_strategy(symbol: str, base_cfg: dict, overrides: dict, leader=None):
+    """Build the real strategy with `overrides` merged over the config block.
+
+    `leader` (a built strategy) is required only by a follower type: it is passed
+    through to `build_strategy` so a `pairs_follow` strategy can bind its leader's
+    live price buffer, exactly as the live bot's two-pass builder does.
+    """
     cfg = {**base_cfg, **overrides}
-    return build_strategy(symbol, cfg)
+    built = {leader.symbol: leader} if leader is not None else None
+    return build_strategy(symbol, cfg, built)
 
 
 def _clamp_buy(quantity: int, position: int, max_position: int) -> int:
@@ -32,9 +38,23 @@ def _clamp_buy(quantity: int, position: int, max_position: int) -> int:
 
 
 def replay(symbol: str, base_cfg: dict, overrides: dict,
-           series: list, max_position: int, slippage_bps: int = 0) -> dict:
-    """Replay `series` (list of (seq, ts, price) ticks) for one param set."""
-    strat = make_strategy(symbol, base_cfg, overrides)
+           series: list, max_position: int, slippage_bps: int = 0,
+           leader: dict | None = None) -> dict:
+    """Replay `series` (list of (seq, ts, price) ticks) for one param set.
+
+    `leader`, when given, backtests a follower strategy (`pairs_follow`). It is
+    {"symbol": str, "cfg": dict, "series": list} describing the leader instrument
+    whose price series the follower reads. The leader strategy is fed its own
+    ticks *interleaved by seq* ahead of each follower tick, so the follower sees
+    exactly the leader-buffer state the live bot would at that moment. Only the
+    follower trades; the leader is a read-only price reference.
+    """
+    leader_strat = None
+    leader_series: list = []
+    if leader is not None:
+        leader_strat = build_strategy(leader["symbol"], leader["cfg"])
+        leader_series = leader["series"]
+    strat = make_strategy(symbol, base_cfg, overrides, leader_strat)
 
     position = 0
     avg_cost = 0        # VWAP cost of the held long, cents
@@ -50,9 +70,21 @@ def replay(symbol: str, base_cfg: dict, overrides: dict,
     max_drawdown = 0
     last_price = 0
 
+    leader_i = 0
+    n_leader = len(leader_series)
+
     for i, tick in enumerate(series):
+        seq = tick[0]
         px = tick[2]
         last_price = px
+
+        # 0. Feed the leader every tick that happened before this follower tick,
+        #    so leader_strat.prices holds exactly what the live bot would have
+        #    seen at this seq. Global seqs are unique, so `< seq` is exact.
+        if leader_strat is not None:
+            while leader_i < n_leader and leader_series[leader_i][0] < seq:
+                leader_strat.on_price(leader_series[leader_i][2])
+                leader_i += 1
 
         # 1. Settle a pending order from the previous tick against this price.
         if pending is not None:

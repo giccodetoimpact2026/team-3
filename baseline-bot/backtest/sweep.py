@@ -27,22 +27,29 @@ GRID = {
         "lookback_samples": [10, 15, 20],
         "deviation_threshold": [0.002, 0.004, 0.006],
     },
-}
-
-# The signal parameter that pairs with lookback_samples, per strategy type.
-_THRESHOLD_KEY = {
-    "momentum": "momentum_threshold",
-    "mean_reversion": "deviation_threshold",
+    # pairs_follow reads its leader's breakout, so the tunables are the breakout
+    # window, how long a breakout stays actionable, and the exit give-back -- not
+    # lookback (own buffer only supplies the limit reference) or a threshold.
+    # leader_breakout_samples must be >= 2 and <= the leader's lookback_samples;
+    # the strategy raises at startup otherwise, so keep grid values within the
+    # tightest active leader lookback (NOVA = 25).
+    "pairs_follow": {
+        "leader_breakout_samples": [5, 10, 15],
+        "breakout_arm_samples": [3, 5, 8],
+        "exit_drawdown": [0.002, 0.004, 0.008],
+    },
 }
 
 
 def current_params(strategy_type: str, base_cfg: dict) -> dict:
-    """The live config's tunable params for this instrument."""
-    tkey = _THRESHOLD_KEY[strategy_type]
-    return {
-        "lookback_samples": int(base_cfg["lookback_samples"]),
-        tkey: float(base_cfg[tkey]),
-    }
+    """The live config's swept params for this instrument.
+
+    Reads exactly the keys this strategy type sweeps (see GRID) and casts each to
+    match its grid values, so the result compares equal to the matching override
+    set and the "current" row is found in the sweep.
+    """
+    grid = GRID[strategy_type]
+    return {key: type(values[0])(base_cfg[key]) for key, values in grid.items()}
 
 
 def param_sets(strategy_type: str, base_cfg: dict) -> list[dict]:
@@ -88,14 +95,18 @@ def _build_risk(config: dict) -> RiskLimits:
 
 
 def run_symbol(symbol: str, base_cfg: dict, series: list, max_position: int,
-               slippage_bps: int = 0) -> dict:
-    """Run every param set for one instrument and return its ranked block."""
+               slippage_bps: int = 0, leader: dict | None = None) -> dict:
+    """Run every param set for one instrument and return its ranked block.
+
+    `leader` is forwarded to `engine.replay` for follower types; see there.
+    """
     strategy_type = base_cfg["type"]
     current = current_params(strategy_type, base_cfg)
 
     results = []
     for overrides in param_sets(strategy_type, base_cfg):
-        res = replay(symbol, base_cfg, overrides, series, max_position, slippage_bps)
+        res = replay(symbol, base_cfg, overrides, series, max_position,
+                     slippage_bps, leader)
         res["is_current"] = _same_params(overrides, current)
         results.append(res)
 
@@ -121,6 +132,21 @@ def run_symbol(symbol: str, base_cfg: dict, series: list, max_position: int,
     }
 
 
+def _leader_for(base_cfg: dict, strat_cfg: dict, series_by_symbol: dict) -> dict | None:
+    """Resolve the leader bundle a follower needs, or None if unavailable.
+
+    A follower can only be backtested when its leader is configured and has price
+    data in this segment (its buffer is the follower's whole signal). Missing
+    either, we return None and the caller skips the instrument rather than crash.
+    """
+    leader_symbol = base_cfg.get("leader")
+    leader_cfg = strat_cfg.get(leader_symbol)
+    leader_series = series_by_symbol.get(leader_symbol)
+    if leader_cfg is None or not leader_series:
+        return None
+    return {"symbol": leader_symbol, "cfg": leader_cfg, "series": leader_series}
+
+
 def run_all(config: dict, series_by_symbol: dict, slippage_bps: int = 0) -> list[dict]:
     """Run the sweep for every configured instrument that has price data."""
     risk = _build_risk(config)
@@ -130,7 +156,16 @@ def run_all(config: dict, series_by_symbol: dict, slippage_bps: int = 0) -> list
         base_cfg = strat_cfg.get(symbol)
         if base_cfg is None or not series:
             continue
+        if base_cfg["type"] not in GRID:
+            # No sweep grid for this strategy type -- skip rather than KeyError.
+            continue
+        leader = None
+        if base_cfg["type"] == "pairs_follow":
+            leader = _leader_for(base_cfg, strat_cfg, series_by_symbol)
+            if leader is None:
+                continue
         out.append(run_symbol(
-            symbol, base_cfg, series, risk.max_position(symbol), slippage_bps
+            symbol, base_cfg, series, risk.max_position(symbol), slippage_bps,
+            leader,
         ))
     return out

@@ -61,3 +61,47 @@ def test_win_rate_is_none_without_a_closing_sell():
     res = replay("NOVA", CFG, {}, series, max_position=1000)
     assert res["metrics"]["sell_count"] == 0
     assert res["metrics"]["win_rate"] is None
+
+
+# --- pairs_follow (leader-fed) replay --------------------------------------
+#
+# The follower's whole signal lives in the LEADER's price buffer, which the
+# engine feeds interleaved by seq ahead of each follower tick. The follower's
+# own price is held flat at 10_000 so its trades are driven purely by the
+# leader, isolating the interleave behaviour. Leader breakout = follower's
+# latest print above its prior `leader_breakout_samples`-1 window.
+FOLLOWER_CFG = {
+    "type": "pairs_follow", "leader": "NOVA", "lookback_samples": 1,
+    "leader_breakout_samples": 3, "breakout_arm_samples": 2,
+    "exit_drawdown": 0.01, "trade_quantity": 100, "limit_offset_bps": 5,
+}
+LEADER_CFG = {
+    "type": "momentum", "lookback_samples": 5, "momentum_threshold": 0.03,
+    "trade_quantity": 100, "limit_offset_bps": 5,
+}
+# Follower (AXON) ticks on even seqs, leader (NOVA) on odd, so they interleave.
+_AXON = [(2 * i + 2, None, 10_000) for i in range(6)]
+
+
+def _leader(prices):
+    seqs = [2 * i + 1 for i in range(len(prices))]
+    return {"symbol": "NOVA", "cfg": LEADER_CFG,
+            "series": [(s, None, p) for s, p in zip(seqs, prices)]}
+
+
+def test_pairs_follow_buys_when_the_leader_breaks_out():
+    # Leader steps to new highs from tick 4 on -> follower arms and buys, and
+    # its buys fill because the follower price never runs past its own limit.
+    leader = _leader([10_000, 10_000, 10_000, 10_100, 10_200, 10_300])
+    res = replay("AXON", FOLLOWER_CFG, {}, _AXON, max_position=1000, leader=leader)
+    assert res["metrics"]["trade_count"] == 2
+    assert res["metrics"]["final_position"] == 200
+
+
+def test_pairs_follow_never_trades_when_the_leader_is_flat():
+    # A flat leader never prints a new high -> the follower never arms -> no
+    # trades. Proves the follower actually reads the interleaved leader series.
+    leader = _leader([10_000] * 6)
+    res = replay("AXON", FOLLOWER_CFG, {}, _AXON, max_position=1000, leader=leader)
+    assert res["metrics"]["trade_count"] == 0
+    assert res["metrics"]["final_position"] == 0
