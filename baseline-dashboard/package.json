@@ -5,8 +5,8 @@
   "description": "Baseline trading dashboard for the GIC hackathon (vanilla HTML/CSS/JS + jQuery).",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test tests/format.test.js tests/view.test.js tests/trades.test.js",
-    "check": "node --check js/config.js && node --check js/format.js && node --check js/view.js && node --check js/trades.js && node --check js/mcp.js && node --check js/api.js && node --check js/dashboard.js && node --check server.js && node --check mcp-adapter.example.js"
+    "test": "node --test tests/format.test.js tests/view.test.js tests/trades.test.js tests/analytics.test.js",
+    "check": "node --check js/config.js && node --check js/format.js && node --check js/view.js && node --check js/trades.js && node --check js/analytics.js && node --check js/chart.js && node --check js/tabs.js && node --check js/mcp.js && node --check js/api.js && node --check js/dashboard.js && node --check server.js && node --check mcp-adapter.example.js"
   },
   "engines": {
     "node": ">=18"

@@ -118,13 +118,20 @@ def test_group_cap_cannot_block_the_sell_that_unwinds_a_breach(config):
 
     client = Mock()
     client.get_orders.return_value = []
+    # Size each member from the configured cap so the group is unambiguously in
+    # breach regardless of how the cap is later retuned. At `mark` per share,
+    # one member alone is ~one full cap, so two members clear the cap outright.
+    # (A fixed 500+500 stopped breaching once the cap was raised to 120M cents.)
+    mark = 20_000
+    cap = config["risk"]["correlated_groups"]["energy_freight"]["max_notional_cents"]
+    qty = cap // mark
     client.get_portfolio.return_value = {
         "session_id": "w1", "cash": 10**9, "reserved_cash": 0,
         "positions": [
-            {"symbol": "NOVA", "quantity": 500, "reserved_qty": 0,
-             "avg_cost": 20_000, "last_price": 20_000},
-            {"symbol": "AXON", "quantity": 500, "reserved_qty": 0,
-             "avg_cost": 20_000, "last_price": 20_000}]}
+            {"symbol": "NOVA", "quantity": qty, "reserved_qty": 0,
+             "avg_cost": mark, "last_price": mark},
+            {"symbol": "AXON", "quantity": qty, "reserved_qty": 0,
+             "avg_cost": mark, "last_price": mark}]}
     client.submit_limit_order.side_effect = lambda s, side, q, p, k: SubmitResult(
         Outcome.ACKNOWLEDGED, k, order_id=k, status="OPEN", remaining_qty=q)
 
