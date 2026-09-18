@@ -14,6 +14,8 @@
         <span class="title">Trading Dashboard</span>
       </div>
       <div class="status">
+        <span id="bot-state" class="badge bot offline" title="Bot lifecycle state (GET /bot/status)">BOT OFFLINE</span>
+        <button id="kill-switch" class="btn danger" type="button" disabled title="Emergency stop: block new orders, cancel every open order, stop the bot. No confirmation.">HALT BOT</button>
         <span id="session-badge" class="badge" title="Trading session state (SSE)">—</span>
         <span id="connectivity-dot" class="dot offline"></span>
         <span id="connectivity-label">CONNECTING…</span>
@@ -21,6 +23,7 @@
     </header>
 
     <main class="content">
+      <div id="halt-result" class="halt-result" style="display: none" role="status"></div>
       <div id="announcement" class="announcement" style="display: none"></div>
       <section class="cards">
         <div class="card" id="card-total-value">

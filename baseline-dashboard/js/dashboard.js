@@ -31,12 +31,59 @@ const DashboardController = {
     this.renderTimestamp();
     setInterval(this.renderTimestamp, 1000);
     $("#export-csv").on("click", this.exportCsv.bind(this));
+    $("#kill-switch").on("click", this.haltBot.bind(this));
+    this.pollBotStatus();
+    setInterval(this.pollBotStatus.bind(this), CONFIG.BOT_STATUS_INTERVAL_MS);
 
     var self = this;
     this.loadInstruments().always(function () {
       self.refreshAll();
       self.connectFeed();
     });
+  },
+
+  // --- Bot control: state pill + kill switch (P0-14) ----------------------
+
+  _halting: false,
+  pollBotStatus: function () {
+    var self = this;
+    if (this._halting) return; // the halt response renders the final state
+    BotAPI.getStatus()
+      .then(function (status) { self.renderBotStatus(status); })
+      .fail(function () { self.renderBotStatus(null); });
+  },
+
+  renderBotStatus: function (status) {
+    var v = botStatusView(status);
+    $("#bot-state").removeClass("running quiescing stopped offline").addClass(v.cls).text(v.label);
+    $("#kill-switch").prop("disabled", !v.canHalt || this._halting);
+  },
+
+  // Emergency stop. One click, no confirmation dialog (backlog requirement):
+  // the button greys out at once, the bot blocks new intents, cancels every
+  // open order and stops. The outcome is shown in a banner; the pill goes to
+  // HALTED, then OFFLINE once the process has exited.
+  haltBot: function () {
+    var self = this;
+    if (this._halting) return;
+    this._halting = true;
+    this.renderBotStatus({ state: "QUIESCING" });
+    $("#halt-result").removeClass("error").text("Halting bot… cancelling open orders").show();
+    BotAPI.halt()
+      .then(function (resp) {
+        $("#halt-result").text(haltResultText(resp)).show();
+        self.renderBotStatus(resp);
+        self.requestRefresh("all"); // cancellations change the lifecycle table
+      })
+      .fail(function (xhr) {
+        var body = xhr && xhr.responseJSON;
+        var msg = body && body.error && body.error.message ? body.error.message : (xhr && xhr.statusText) || "no response";
+        $("#halt-result").addClass("error").text("Halt request failed (" + msg + "). Stop the bot from its terminal with Ctrl-C.").show();
+      })
+      .always(function () {
+        self._halting = false;
+        self.pollBotStatus();
+      });
   },
 
   storage: function () {

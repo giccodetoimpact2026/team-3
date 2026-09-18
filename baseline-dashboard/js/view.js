@@ -10,6 +10,8 @@
     root.positionRows = api.positionRows; // browser globals
     root.FeedCursor = api.FeedCursor;
     root.escapeHtml = api.escapeHtml;
+    root.botStatusView = api.botStatusView;
+    root.haltResultText = api.haltResultText;
   }
 })(typeof self !== "undefined" ? self : this, function (fmt) {
   // One row per instrument in the given order. An instrument absent from the
@@ -78,5 +80,27 @@
       .replace(/'/g, "&#39;");
   }
 
-  return { positionRows, FeedCursor, escapeHtml };
+  // Bot state pill and kill-switch button, from GET /bot/status (or null when
+  // the bot did not answer). `canHalt` is false once the bot is already
+  // stopping or gone, so the button cannot fire at nothing.
+  //   RUNNING   -> green, button enabled
+  //   QUIESCING -> amber, cancelling in progress
+  //   STOPPED   -> red (halted)
+  //   null      -> grey OFFLINE (process not running, or proxy down)
+  function botStatusView(status) {
+    var state = status && status.state ? String(status.state).toUpperCase() : null;
+    if (state === "RUNNING") return { label: "BOT RUNNING", cls: "running", canHalt: true };
+    if (state === "QUIESCING") return { label: "BOT HALTING…", cls: "quiescing", canHalt: false };
+    if (state === "STOPPED") return { label: "BOT HALTED", cls: "stopped", canHalt: false };
+    return { label: "BOT OFFLINE", cls: "offline", canHalt: false };
+  }
+
+  // One-line outcome of POST /bot/halt for the operator.
+  function haltResultText(resp) {
+    var n = resp && resp.unresolved !== undefined ? Number(resp.unresolved) : 0;
+    if (n > 0) return "Halted. " + n + " order" + (n === 1 ? "" : "s") + " could not be confirmed cancelled; check the exchange.";
+    return "Halted. All open orders cancelled.";
+  }
+
+  return { positionRows, FeedCursor, escapeHtml, botStatusView, haltResultText };
 });

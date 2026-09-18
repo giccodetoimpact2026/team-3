@@ -41,3 +41,30 @@ const ExchangeAPI = {
     });
   },
 };
+
+// The bot's local control endpoint, reached through the /bot proxy in
+// server.js. This is the one place the dashboard sends a command to the bot.
+// Both calls answer {state, session_id, session_open[, unresolved]}.
+const BotAPI = {
+  // GET /status -> lifecycle snapshot. Fails when the bot process is not up.
+  getStatus: function () {
+    return $.ajax({
+      url: CONFIG.BOT_BASE_URL + "/status",
+      method: "GET",
+      dataType: "json",
+      timeout: 4000,
+    });
+  },
+
+  // POST /halt -> emergency stop: the bot blocks new intents, cancels every
+  // open order and stops. Same path as Ctrl-C on the bot. No confirmation
+  // step by design (backlog: "one click").
+  halt: function () {
+    return $.ajax({
+      url: CONFIG.BOT_BASE_URL + "/halt",
+      method: "POST",
+      dataType: "json",
+      timeout: 15000, // cancelling many orders can take a few seconds
+    });
+  },
+};

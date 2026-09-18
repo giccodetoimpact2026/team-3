@@ -20,6 +20,7 @@ from orders.manager import OrderManager
 from risk.limits import RiskLimits
 from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
+from utils.control import ControlServer
 from utils.event_worker import EventWorker
 from utils.logger import log
 
@@ -309,6 +310,25 @@ def main():
     signal.signal(signal.SIGINT, _shutdown_handler)
     signal.signal(signal.SIGTERM, _shutdown_handler)
 
+    # --- control endpoint (kill switch, P0-14) ------------------------------
+    # The dashboard's HALT button POSTs /halt here through its local proxy.
+    control_cfg = config.get("control", {})
+
+    def control_status():
+        return {
+            "state": lifecycle["value"],
+            "session_id": state["session_id"],
+            "session_open": state["session_open"],
+        }
+
+    control = ControlServer(
+        control_status,
+        lambda: halt(client, lifecycle, shutdown_event),
+        host=control_cfg.get("host", "127.0.0.1"),
+        port=int(os.environ.get("BOT_CONTROL_PORT") or control_cfg.get("port", 8092)),
+    )
+    control.start()
+
     # --- start feed ---------------------------------------------------------
     feed = SSEFeed(config["exchange"]["base_url"], config["exchange"]["api_key"])
     worker = EventWorker({"session": on_session, "price": on_price})
@@ -327,13 +347,12 @@ def main():
     #                                      if `unresolved` is non-empty
     #   orders.reset_for_session(id)    -- drop per-window state at a boundary
     #   orders.last_seen_session_id     -- read from GET /portfolio, no extra call
-    try:
-        while True:
-            time.sleep(1)
-    except Exception:
+    # Wait for the shutdown signal (Ctrl-C, SIGTERM or the dashboard kill
+    # switch). A bare `while True: sleep` here would never let halt() end the
+    # process. Polling keeps the main thread responsive to signals on every OS.
+    while not shutdown_event.wait(1):
         pass
-    # Wait for shutdown signal instead of sleeping in a bare loop.
-    shutdown_event.wait()
+    control.stop()
 
     exit_code = 0 if lifecycle["value"] == STOPPED else 1
     sys.exit(exit_code)
