@@ -300,15 +300,6 @@ def main():
         # Refusals, rejections and unknowns are all logged by OrderManager.
         # Nothing is reported as submitted unless the exchange acknowledged it.
         orders.submit_intent(symbol, signal.side, signal.quantity, signal.limit_price)
-        position = client.get_positions(symbol)
-        signal_obj = strat.signal(position)
-        if signal_obj is None:
-            return
-        if signal_obj.side == "buy" and not risk.allows_buy(symbol, position, signal_obj.quantity):
-            return
-        client.submit_limit_order(
-            symbol, signal_obj.side, signal_obj.quantity, signal_obj.limit_price, str(uuid.uuid4()))
-        log(f"submitted {signal_obj} for {symbol}")
 
     # --- signal handlers (P0-11, P0-14) -------------------------------------
 
