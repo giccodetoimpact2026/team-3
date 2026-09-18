@@ -26,7 +26,7 @@
 
 exchange:
   base_url: "https://api.codetoimpact.sg"   # sandbox/live URL from the platform team
-  api_key: "REPLACE_WITH_TEAM_API_KEY"
+  api_key: "c2i_iI2w1FrCqVhrxl-cqMaauw4O6bCwqKZ2"
 
 instruments:
   active:
@@ -52,7 +52,7 @@ strategy:
     # with sqrt(N), trend with N).
     lookback_samples: 25
     momentum_threshold: 0.012
-    trade_quantity: 400
+    trade_quantity: 600
     limit_offset_bps: 5
     # GIVE-BACK EXIT. Fixes a measured failure to release a long: the entry
     # measure `(last - first)/first` uses a reference that slides forward with
@@ -81,7 +81,7 @@ strategy:
     lookback_samples: 15
     deviation_threshold: 0.004
     trend_guard: 0.003
-    trade_quantity: 800
+    trade_quantity: 1200
     limit_offset_bps: 5
     # DCA / scale-in. Mean-reversion is the one family where this belongs: the
     # deviation band IS the thesis, so a deeper dip is a STRONGER signal, not a
@@ -102,7 +102,7 @@ strategy:
     # from the previous 0.005/10: 0.0005 per sample x15 = 0.0075.
     lookback_samples: 15
     momentum_threshold: 0.0075
-    trade_quantity: 600
+    trade_quantity: 900
     limit_offset_bps: 5
   DRFT:
     type: mean_reversion
@@ -121,7 +121,7 @@ strategy:
     deviation_threshold: 0.006      # fallback for either side if unset
     buy_deviation_threshold: 0.006
     sell_deviation_threshold: 0.012
-    trade_quantity: 10
+    trade_quantity: 30
     limit_offset_bps: 5
   # --- crash_buy (strategies/crash_buy.py) — NOT YET ASSIGNED ---------------
   # Scales aggressively into a sharp sell-off and sells the rebound. Built for
@@ -162,7 +162,7 @@ strategy:
     leader_breakout_samples: 10  # must be <= NOVA's lookback_samples
     breakout_arm_samples: 10     # follow for this many of our own ticks
     exit_drawdown: 0.012         # leader gives back 1.2% from its high -> close
-    trade_quantity: 400
+    trade_quantity: 600
     limit_offset_bps: 5
 
 # Regime-aware sizing (James Wee, page 3 — "this is the one that matters").
@@ -212,16 +212,16 @@ regime:
     momentum:
       TREND: 1.0                 # momentum active
       RANGE: 0.0                 # p.3: "suspend momentum (it will bleed)"
-      COMPRESSION: 0.25          # no trend to ride — cut size toward zero
+      COMPRESSION: 0.4           # no trend to ride — reduced but not zero
       SHOCK: 0.0                 # whipsaw risk; no new entries
-      NEUTRAL: 0.5               # p.3: "hold current posture, reduce size"
+      NEUTRAL: 0.6               # aggressive for final session
       WARMUP: 0.0                # never trade on an unclassified regime
     mean_reversion:
       TREND: 0.0                 # reverting into a trend is the falling knife
       RANGE: 1.0                 # the range is where reversion belongs
       COMPRESSION: 0.5           # little deviation worth capturing
       SHOCK: 0.0                 # the move is information, not noise
-      NEUTRAL: 0.5
+      NEUTRAL: 0.6
       WARMUP: 0.0
     crash_buy:
       # The one family that wants a SHOCK — the shock is its entry. TREND is
@@ -240,9 +240,9 @@ regime:
       # momentum signal wearing another instrument.
       TREND: 1.0
       RANGE: 0.0
-      COMPRESSION: 0.25
+      COMPRESSION: 0.4
       SHOCK: 0.0
-      NEUTRAL: 0.5
+      NEUTRAL: 0.6
       WARMUP: 0.0
 
   # Per-instrument overrides of the family table, for the case page 3 flags:
@@ -256,7 +256,7 @@ regime:
       # its position cheaply. The tiny clip, the 100-share cap and the 2% stop
       # are what make that safe — not refusing to trade.
       COMPRESSION: 0.25
-      NEUTRAL: 0.25
+      NEUTRAL: 0.5
       SHOCK: 0.0                 # a thin book in a shock is the one to avoid
 
 rate_limits:
@@ -279,7 +279,7 @@ risk:
     AXON: 4000                   # follower, matches leader's cap
     DRFT: 400                    # thin book — kept small relative to others
 
-  order_cooldown_seconds: 3.0    # min seconds between orders for the same symbol
+  order_cooldown_seconds: 1.5    # min seconds between orders for the same symbol
 
   # --- correlated groups (BUG-008) ----------------------------------------
   # Per-instrument caps can all be satisfied while the book is one directional

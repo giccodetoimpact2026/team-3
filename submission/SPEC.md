@@ -76,16 +76,23 @@ They need:
 
 | Feature | Stakeholder | Decision | Rationale |
 |---------|------------|----------|-----------|
-| AI conversational panel | Sophia, Raymond | Descoped | Must use organizer LLM service (llm.codetoimpact.sg). Rushed AI with poor responsible-AI practice (no citations, hallucinated confidence) would score worse than no AI. The MCP read server and REST facade are ready for integration; the panel itself needs careful prompt engineering and uncertainty handling. |
-| ATR regime detection | Adeline, James Wee (notes) | Descoped | Page 3 formula is clear but needs per-instrument threshold tuning and switching hysteresis rules that the notes don't specify. Incorrect regime detection would destabilise working strategies. |
-| Price charts (candlestick/VWAP) | Raymond, Adeline | Descoped | No candles endpoint exists — must accumulate from SSE feed. Building a charting library from scratch in vanilla JS without external dependencies is high-effort, medium-value. Per-instrument P&L numbers provide the same analytical signal in less time. |
-| Per-instrument stop-losses | Priya | Descoped | The risk engine has position limits and crash guard (15% drop protection). Full stop-losses with dashboard visibility require wiring through bot config, the control endpoint, and the dashboard — three-component change with testing burden. |
-| Audit log (immutable) | Priya, Linda | Descoped | Important for production; not critical for a demo. Order lifecycle table and CSV export provide traceability for the scored windows. |
-| DRFT trading | Winston (optional), Derek (cautious) | Descoped | Consensus: "tradeable with informed risk management" but the bot moves its own price in a thin market. The risk of adverse self-impact outweighs the marginal alpha in 30-minute scored windows. |
+| AI conversational panel | Sophia, Raymond | Descoped | Must use organizer LLM service (llm.codetoimpact.sg). Rushed AI with poor responsible-AI practice (no citations, hallucinated confidence) would score worse than no AI. The MCP read server and REST facade are ready for integration; the panel itself needs careful prompt engineering and uncertainty handling. Dashboard has an Assistant tab placeholder. |
+| Per-instrument pause/resume | Clarissa | Descoped | Bot halt path exists; per-instrument granularity requires wiring per-symbol state through the control server and dashboard — deferred in favour of the all-instruments kill switch. |
+| Portfolio-level exposure cap | Priya | Descoped | Position caps and correlated-group notional limits exist. A single portfolio-level hard cap adds marginal safety over the existing layered limits. |
 | Dark mode / mobile | Junior traders (chat) | Descoped | Cosmetic preferences with no functional impact. Time spent here is time not spent on safety or strategy. |
-| Market-making | Derek | Disabled | Inventory skew bug acknowledged by Derek himself: "don't just uncomment James's module." Skeleton exists but is not safe to enable. |
+| Market-making | Derek | Disabled | Inventory skew bug acknowledged by Derek himself: "don't just uncomment James's module." Skeleton exists (`market_making.py.DISABLED`) but is not safe to enable. |
 | Full forecasting model | Sophia | Descoped | Unrealistic for a one-day build. Would require data collection, model training, evaluation, and responsible-AI labelling. |
 | Orchestration / monitoring sidecar | Aaron | Descoped | Production infrastructure; unnecessary for demo. Three-process architecture (bot + dashboard + MCP) is sufficient. |
+
+### Originally descoped, then delivered
+
+| Feature | Stakeholder | What we shipped |
+|---------|------------|----------------|
+| ATR regime detection | Adeline, James Wee | Fully implemented with three modules: raw 8-label classifier (`regime.py`), adapter with hysteresis/debounce (`regime_adapter.py`), and policy table mapping (family, regime) → size multiplier (`regime_policy.py`). Enabled in config with `confirm_samples=3`. 71 dedicated tests. |
+| Price charts (candlestick/VWAP) | Raymond, Adeline | Client-side candlestick chart built from SSE feed in vanilla JS canvas. 1m/5m/15m bucket selection. VWAP overlay calculated from trade data. Available in the Execution tab. |
+| Per-instrument stop-losses | Priya | Risk engine `exits.py` implements per-instrument stop-loss, fixed take-profit, and trailing take-profit (arm + trail). Configured per instrument in `config.yaml`. |
+| DRFT trading | Winston, Derek | DRFT is assigned a mean-reversion strategy with conservative parameters (qty=30, asymmetric buy=0.006/sell=0.012 deviation bands). Regime policy reduces DRFT sizing in SHOCK conditions. Position cap set at 400 — the tightest of all instruments. |
+| News/sentiment analysis | Sophia | Two-tier news engine: Tier 0 keyword classifier (instant, no LLM) + Tier 1 async LLM refinement via organizer service. Per-symbol bias with cooldown and TTL. Dashboard controls for news parameters with two-step confirmation. 53 dedicated tests. |
 
 ### What we kept that others might not have
 
@@ -95,4 +102,6 @@ They need:
 | Fixed CSV export (Gerald's exact spec) | Gerald said "treat these as technical specs, not suggestions." The operations team depends on this format for reconciliation. |
 | Session order counters (always visible) | Gerald's requirement — not just in the export, but on the dashboard. Small effort, high operational value. |
 | Pairs strategy (AXON following NOVA) | Derek's strongest signal. Low implementation risk since it reuses the momentum framework with a cross-instrument trigger. |
-| Crash guard + DCA overlay | Defensive risk feature that protects during scored windows. Better to have it and not need it. |
+| Crash guard + DCA overlay | Defensive risk feature that protects during scored windows. Better to have it and not need it. DCA implemented on all mean-reversion instruments with configurable `max_tranches` and `step_multiple`. |
+| Crash-buy strategy (ready, unassigned) | Built and tested (18 tests) for V-recovery scenarios like the Team 11 CRVX crash. Deliberately left unassigned in config — available to enable with one config change if the market warrants it. |
+| Backtest engine | Parameter sweep capability with replay engine, configurable fill model, and recording loader. Allows offline validation of strategy parameters before live windows. |
